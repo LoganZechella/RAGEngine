@@ -32,7 +32,7 @@ class RAGEngine:
         
         self.deep_analyzer = None
         if google_api_key:
-            self.deep_analyzer = DeepAnalyzer(api_key=google_api_key)
+            self.deep_analyzer = DeepAnalyzer(api_key=openai_api_key)
         
         self.top_k_rerank = top_k_rerank
         

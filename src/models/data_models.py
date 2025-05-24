@@ -1,7 +1,7 @@
 """
-Core data models for the RAG Engine.
+Enhanced core data models for the RAG Engine.
 These models represent the various data structures used throughout the application.
-Extracted from APEGA with generalizations for broader use cases.
+Optimized for readability and sophisticated knowledge synthesis output.
 """
 
 from typing import Dict, List, Optional, Union, Any
@@ -23,6 +23,25 @@ class ChunkType(str, Enum):
     TABLE = "table"
     HEADING = "heading"
     LIST = "list"
+
+
+class AnalysisDepth(str, Enum):
+    """Depth levels of analysis performed."""
+    BASIC = "basic"
+    STANDARD = "standard"
+    PHD_LEVEL = "phd_level"
+    EXPERT = "expert"
+    FALLBACK_TEXT = "fallback_text"
+    ERROR = "error"
+
+
+class EvidenceQuality(str, Enum):
+    """Quality assessment of evidence supporting concepts."""
+    STRONG = "strong"
+    MODERATE = "moderate"
+    WEAK = "weak"
+    INSUFFICIENT = "insufficient"
+    CONFLICTING = "conflicting"
 
 
 class StructuredTable(BaseModel):
@@ -76,10 +95,98 @@ class RetrievedContext(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class KeyConcept(BaseModel):
+    """A key concept identified in the synthesized knowledge."""
+    concept: str
+    explanation: str
+    importance: str
+    evidence_quality: Optional[EvidenceQuality] = None
+    controversies: Optional[str] = None
+    related_concepts: List[str] = Field(default_factory=list)
+    confidence_score: Optional[float] = None
+
+
+class SynthesisInsight(BaseModel):
+    """A novel insight generated from cross-referencing information."""
+    insight: str
+    supporting_evidence: List[str] = Field(default_factory=list)
+    confidence_level: Optional[str] = None
+    implications: Optional[str] = None
+
+
+class ResearchGap(BaseModel):
+    """An identified gap or limitation in the current knowledge."""
+    gap_description: str
+    severity: Optional[str] = None  # "critical", "moderate", "minor"
+    suggested_investigation: Optional[str] = None
+
+
 class SynthesizedKnowledge(BaseModel):
-    """Knowledge synthesized by deep analysis of retrieved contexts."""
+    """Enhanced knowledge synthesized by deep analysis of retrieved contexts."""
+    
+    # Core synthesis results
     summary: str
-    key_concepts: List[Dict[str, str]] = Field(default_factory=list)
-    topics: List[str] = Field(default_factory=list)  # Generalized from potential_exam_areas
+    key_concepts: List[KeyConcept] = Field(default_factory=list)
+    topics: List[str] = Field(default_factory=list)
+    
+    # Advanced analysis fields
+    synthesis_insights: List[SynthesisInsight] = Field(default_factory=list)
+    research_gaps: List[ResearchGap] = Field(default_factory=list)
+    
+    # Methodological and theoretical analysis
+    methodological_observations: Optional[str] = None
+    theoretical_implications: Optional[str] = None
+    
+    # Quality and confidence metrics
+    analysis_depth: AnalysisDepth = AnalysisDepth.STANDARD
+    overall_confidence: Optional[float] = None
+    completeness_score: Optional[float] = None
+    
+    # Source tracking
     source_chunk_ids: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict) 
+    num_source_contexts: int = 0
+    
+    # Enhanced metadata
+    analysis_timestamp: datetime = Field(default_factory=datetime.now)
+    analysis_model: Optional[str] = None
+    query_complexity: Optional[str] = None
+    synthesis_quality_indicators: Dict[str, Any] = Field(default_factory=dict)
+    
+    def get_display_summary(self, max_length: int = 300) -> str:
+        """Get a truncated summary for display purposes."""
+        if len(self.summary) <= max_length:
+            return self.summary
+        return self.summary[:max_length-3] + "..."
+    
+    def get_confidence_indicator(self) -> str:
+        """Get a human-readable confidence indicator."""
+        if self.overall_confidence is None:
+            return "Unknown"
+        elif self.overall_confidence >= 0.8:
+            return "High"
+        elif self.overall_confidence >= 0.6:
+            return "Moderate"
+        elif self.overall_confidence >= 0.4:
+            return "Low"
+        else:
+            return "Very Low"
+    
+    def get_analysis_quality_summary(self) -> Dict[str, str]:
+        """Get a summary of analysis quality indicators."""
+        return {
+            "depth": self.analysis_depth.value.replace("_", " ").title(),
+            "confidence": self.get_confidence_indicator(),
+            "completeness": f"{self.completeness_score:.1%}" if self.completeness_score else "Unknown",
+            "num_concepts": str(len(self.key_concepts)),
+            "num_insights": str(len(self.synthesis_insights)),
+            "num_sources": str(self.num_source_contexts)
+        }
+    
+    def has_advanced_analysis(self) -> bool:
+        """Check if advanced analysis fields are populated."""
+        return bool(
+            self.synthesis_insights or 
+            self.research_gaps or 
+            self.methodological_observations or 
+            self.theoretical_implications
+        )

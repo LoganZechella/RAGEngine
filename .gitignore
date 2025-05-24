@@ -10,4 +10,16 @@ Context/
 .env.production.local
 
 *.json
-*/__pycache__
+
+# Python bytecode and cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Log files and directories
+*.log
+*.logs
+logs/
+log/

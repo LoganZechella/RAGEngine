@@ -20,6 +20,7 @@ from loguru import logger
 load_dotenv()
 
 from src.api.knowledge_base_api import KnowledgeBaseAPI
+from enhanced_display_functions import display_enhanced_synthesis, display_contexts_enhanced
 
 class InteractiveRAGShell(cmd.Cmd):
     """Interactive shell for RAG testing and debugging."""
@@ -102,51 +103,28 @@ class InteractiveRAGShell(cmd.Cmd):
             return
         
         try:
-            print(f"\n🔍 Testing RAG pipeline with: '{query_text}'")
-            print("-" * 60)
+            print(f"\n🔍 Enhanced RAG Analysis for: '{query_text}'")
+            print("=" * 80)
             
-            # Run full RAG pipeline
             results = self.kb_api.search(
                 query=query_text,
                 filters=self.current_filters,
                 synthesize=True
             )
             
-            # Display results
-            print(f"📊 Retrieved {results['num_results']} contexts")
-            
-            if results['contexts']:
-                print(f"\n📋 Top Retrieved Contexts:")
-                for i, ctx in enumerate(results['contexts'][:3], 1):
-                    score = ctx.get('rerank_score', ctx.get('initial_score', 0))
-                    print(f"\n{i}. Score: {score:.3f}")
-                    print(f"   Document: {ctx.get('metadata', {}).get('document_id', 'Unknown')}")
-                    print(f"   Text: {ctx['text'][:200]}...")
+            display_contexts_enhanced(results['contexts'])
             
             if results.get('synthesis'):
-                synthesis = results['synthesis']
-                print(f"\n🧠 Synthesized Knowledge:")
-                print(f"Summary: {synthesis['summary'][:300]}...")
-                
-                if synthesis.get('key_concepts'):
-                    print(f"\nKey Concepts ({len(synthesis['key_concepts'])}):")
-                    for concept in synthesis['key_concepts'][:3]:
-                        concept_name = concept.get('concept', 'N/A')
-                        print(f"  - {concept_name}")
-                
-                if synthesis.get('topics'):
-                    print(f"\nTopics ({len(synthesis['topics'])}):")
-                    for topic in synthesis['topics'][:3]:
-                        print(f"  - {topic}")
+                display_enhanced_synthesis(results['synthesis'])
+            else:
+                print("\n⚠️  Knowledge synthesis not available")
             
-            # Store results for further analysis
-            self.last_results = {
-                "query": query_text,
-                "results": results
-            }
+            self.last_results = {"query": query_text, "results": results}
+            print("\n" + "=" * 80)
+            print("✅ Analysis Complete!")
             
         except Exception as e:
-            print(f"❌ Query failed: {str(e)}")
+            print(f"❌ Enhanced query failed: {str(e)}")
     
     def do_search(self, query_text: str):
         """Test hybrid search only."""
@@ -267,46 +245,22 @@ class InteractiveRAGShell(cmd.Cmd):
             return
         
         try:
-            print(f"\n🔍 Testing knowledge synthesis with: '{query_text}'")
-            print("-" * 60)
+            print(f"\n🧠 Deep Knowledge Analysis for: '{query_text}'")
+            print("=" * 80)
             
-            # Search with synthesis
             results = self.kb_api.search(
                 query=query_text,
                 filters=self.current_filters,
                 synthesize=True
             )
             
-            print(f"📊 Analyzed {results['num_results']} contexts")
-            
             if results.get('synthesis'):
-                synthesis = results['synthesis']
-                print(f"\n🧠 Knowledge Synthesis Results:")
-                print(f"Summary: {synthesis['summary'][:500]}...")
-                
-                if synthesis.get('key_concepts'):
-                    print(f"\nKey Concepts ({len(synthesis['key_concepts'])}):")
-                    for concept in synthesis['key_concepts']:
-                        concept_name = concept.get('concept', 'N/A')
-                        explanation = concept.get('explanation', '')[:100]
-                        print(f"  - {concept_name}: {explanation}...")
-                
-                if synthesis.get('topics'):
-                    print(f"\nTopics ({len(synthesis['topics'])}):")
-                    for topic in synthesis['topics']:
-                        print(f"  - {topic}")
-                
-                # Show enhanced metadata if available
-                metadata = synthesis.get('metadata', {})
-                if metadata.get('synthesis_insights'):
-                    print(f"\nSynthesis Insights:")
-                    for insight in metadata['synthesis_insights'][:3]:
-                        print(f"  - {insight}")
+                display_enhanced_synthesis(results['synthesis'])
             else:
-                print("⚠️  Knowledge synthesis not available (Google API key required)")
-            
+                print("⚠️  Knowledge synthesis not available")
+                
         except Exception as e:
-            print(f"❌ Analysis failed: {str(e)}")
+            print(f"❌ Enhanced analysis failed: {str(e)}")
     
     def do_filters(self, filter_json: str):
         """Set search filters (JSON format)."""

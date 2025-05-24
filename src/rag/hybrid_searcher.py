@@ -83,6 +83,69 @@ class HybridSearcher:
         
         return combined_results
     
+    def dense_search_only(
+        self,
+        query_text: str,
+        top_k: Optional[int] = None,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[RetrievedContext]:
+        """
+        Perform dense vector search only.
+        
+        Args:
+            query_text: Text query
+            top_k: Number of results to return (defaults to self.top_k_dense)
+            filters: Optional filters to apply to the search
+            
+        Returns:
+            List of RetrievedContext objects from dense search only
+        """
+        if top_k is None:
+            top_k = self.top_k_dense
+        
+        logger.info(f"Performing dense-only search for query: {query_text}")
+        return self._dense_search(query_text, top_k, filters)
+    
+    def sparse_search_only(
+        self,
+        query_text: str,
+        top_k: Optional[int] = None,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[RetrievedContext]:
+        """
+        Perform sparse keyword search only.
+        
+        Args:
+            query_text: Text query
+            top_k: Number of results to return (defaults to self.top_k_sparse)
+            filters: Optional filters to apply to the search
+            
+        Returns:
+            List of RetrievedContext objects from sparse search only
+        """
+        if top_k is None:
+            top_k = self.top_k_sparse
+        
+        logger.info(f"Performing sparse-only search for query: {query_text}")
+        return self._sparse_search(query_text, top_k, filters)
+    
+    def get_search_info(self) -> Dict[str, Any]:
+        """
+        Get information about the search configuration.
+        
+        Returns:
+            Dictionary containing search configuration and status
+        """
+        return {
+            "top_k_dense": self.top_k_dense,
+            "top_k_sparse": self.top_k_sparse,
+            "rrf_k": self.rrf_k,
+            "bm25_index_available": self.bm25_index is not None,
+            "bm25_corpus_size": len(self.bm25_corpus) if self.bm25_corpus else 0,
+            "vector_db_available": self.vector_db is not None,
+            "embedding_generator_available": self.embedding_generator is not None
+        }
+    
     def _dense_search(
         self, 
         query_text: str, 
