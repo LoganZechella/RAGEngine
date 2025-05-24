@@ -80,7 +80,7 @@ class KnowledgeIngestion:
                 # Mark as processed
                 self.document_manager.mark_document_processed(
                     doc_info["source_path"],
-                    document_id=parsed.document_id
+                    success=True
                 )
                 stats["documents_processed"] += 1
                 
@@ -130,10 +130,10 @@ class KnowledgeIngestion:
             # Store in vector database
             self.vector_db.upsert_embeddings(embedded)
             
-            # Mark as processed
+                # Mark as processed
             self.document_manager.mark_document_processed(doc_info["source_path"])
             stats["documents_processed"] += 1
-            
+                
         except Exception as e:
             logger.error(f"Error processing {file_path}: {e}")
             stats["errors"].append(str(e))

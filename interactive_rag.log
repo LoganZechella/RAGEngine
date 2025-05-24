@@ -1,0 +1,176 @@
+2025-05-24 12:09:19.324 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:09:19.325 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:09:19.352 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:09:19.352 | ERROR    | src.ingestion.vector_db_manager:__init__:91 - Failed to connect to Qdrant: [Errno 61] Connection refused
+2025-05-24 12:09:19.352 | ERROR    | src.ingestion.vector_db_manager:__init__:92 - Please ensure:
+2025-05-24 12:09:19.352 | ERROR    | src.ingestion.vector_db_manager:__init__:93 - 1. Qdrant is running (e.g., via Docker: docker run -p 6333:6333 qdrant/qdrant)
+2025-05-24 12:09:19.352 | ERROR    | src.ingestion.vector_db_manager:__init__:94 - 2. The QDRANT_URL is correct
+2025-05-24 12:09:19.352 | ERROR    | src.ingestion.vector_db_manager:__init__:95 - 3. For local instances, no API key should be set
+2025-05-24 12:09:42.176 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:09:42.176 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:09:42.205 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:09:42.208 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:09:42.210 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:09:42.214 | INFO     | src.ingestion.document_source_manager:_load_manifest:44 - No manifest found at config/document_manifest.json. Creating new manifest.
+2025-05-24 12:09:42.225 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:09:42.225 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:09:42.252 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:09:42.254 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:09:42.256 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:09:42.269 | INFO     | src.rag.rag_engine:__init__:39 - Initialized RAGEngine with reranker=True, analyzer=True
+2025-05-24 12:09:42.269 | INFO     | src.api.knowledge_base_api:__init__:51 - KnowledgeBaseAPI initialized successfully
+2025-05-24 12:18:43.143 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:18:43.143 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:18:43.170 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:18:43.174 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:18:43.175 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:18:43.178 | INFO     | src.ingestion.document_source_manager:_load_manifest:44 - No manifest found at config/document_manifest.json. Creating new manifest.
+2025-05-24 12:18:43.188 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:18:43.188 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:18:43.214 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:18:43.216 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:18:43.218 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:18:43.231 | INFO     | src.rag.rag_engine:__init__:39 - Initialized RAGEngine with reranker=True, analyzer=True
+2025-05-24 12:18:43.231 | INFO     | src.api.knowledge_base_api:__init__:51 - KnowledgeBaseAPI initialized successfully
+2025-05-24 12:18:46.142 | INFO     | src.api.knowledge_base_api:ingest_documents:55 - Starting document ingestion...
+2025-05-24 12:18:46.143 | INFO     | src.ingestion.knowledge_ingestion:process_documents:94 - Ingestion complete: {'documents_processed': 0, 'chunks_created': 0, 'embeddings_generated': 0, 'errors': []}
+2025-05-24 12:22:06.419 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:22:06.419 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:22:06.447 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:22:06.449 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:22:06.451 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:22:06.454 | INFO     | src.ingestion.document_source_manager:_load_manifest:44 - No manifest found at config/document_manifest.json. Creating new manifest.
+2025-05-24 12:22:10.696 | INFO     | src.ingestion.text_chunker:_initialize_semantic_splitter:84 - Initializing semantic text splitter...
+2025-05-24 12:22:12.534 | INFO     | src.ingestion.text_chunker:_initialize_semantic_splitter:86 - Semantic splitter initialized successfully
+2025-05-24 12:22:12.546 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:22:12.546 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:22:12.576 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:22:12.579 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:22:12.580 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:22:12.593 | INFO     | src.rag.rag_engine:__init__:39 - Initialized RAGEngine with reranker=True, analyzer=True
+2025-05-24 12:22:12.593 | INFO     | src.api.knowledge_base_api:__init__:51 - KnowledgeBaseAPI initialized successfully
+2025-05-24 12:22:38.809 | INFO     | src.api.knowledge_base_api:ingest_documents:55 - Starting document ingestion...
+2025-05-24 12:22:38.814 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf
+2025-05-24 12:22:39.403 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:22:39.403 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf
+2025-05-24 12:22:39.403 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:22:39.403 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 7 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:22:40.683 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (7 chunks)
+2025-05-24 12:22:40.683 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 7/7 chunks
+2025-05-24 12:22:40.684 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 7 chunks to Qdrant...
+2025-05-24 12:22:40.718 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 7 points to collection 'knowledge_base'. Result: operation_id=8 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:22:40.718 | ERROR    | src.ingestion.knowledge_ingestion:process_documents:91 - Error processing /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'
+2025-05-24 12:22:40.718 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf
+2025-05-24 12:22:41.192 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:22:41.192 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf
+2025-05-24 12:22:41.192 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:22:41.192 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 4 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:22:42.257 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (4 chunks)
+2025-05-24 12:22:42.257 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 4/4 chunks
+2025-05-24 12:22:42.257 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 4 chunks to Qdrant...
+2025-05-24 12:22:42.276 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 4 points to collection 'knowledge_base'. Result: operation_id=9 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:22:42.277 | ERROR    | src.ingestion.knowledge_ingestion:process_documents:91 - Error processing /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'
+2025-05-24 12:22:42.277 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf
+2025-05-24 12:22:42.393 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:22:42.393 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf
+2025-05-24 12:22:42.393 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:22:42.393 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 8 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:22:43.160 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (8 chunks)
+2025-05-24 12:22:43.160 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 8/8 chunks
+2025-05-24 12:22:43.161 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 8 chunks to Qdrant...
+2025-05-24 12:22:43.197 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 8 points to collection 'knowledge_base'. Result: operation_id=10 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:22:43.198 | ERROR    | src.ingestion.knowledge_ingestion:process_documents:91 - Error processing /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'
+2025-05-24 12:22:43.198 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf
+2025-05-24 12:22:44.612 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:22:44.612 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf
+2025-05-24 12:22:44.612 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:22:44.613 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 11 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:22:45.189 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (11 chunks)
+2025-05-24 12:22:45.189 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 11/11 chunks
+2025-05-24 12:22:45.190 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 11 chunks to Qdrant...
+2025-05-24 12:22:45.240 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 11 points to collection 'knowledge_base'. Result: operation_id=11 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:22:45.240 | ERROR    | src.ingestion.knowledge_ingestion:process_documents:91 - Error processing /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'
+2025-05-24 12:22:45.240 | INFO     | src.ingestion.knowledge_ingestion:process_documents:94 - Ingestion complete: {'documents_processed': 0, 'chunks_created': 30, 'embeddings_generated': 30, 'errors': ["Error processing /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'", "Error processing /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'", "Error processing /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'", "Error processing /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf: DocumentSourceManager.mark_document_processed() got an unexpected keyword argument 'document_id'"]}
+2025-05-24 12:26:16.737 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:26:16.737 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:26:16.766 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:26:16.769 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:26:16.770 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:26:16.772 | INFO     | src.ingestion.document_source_manager:_load_manifest:44 - No manifest found at config/document_manifest.json. Creating new manifest.
+2025-05-24 12:26:18.566 | INFO     | src.ingestion.text_chunker:_initialize_semantic_splitter:84 - Initializing semantic text splitter...
+2025-05-24 12:26:20.090 | INFO     | src.ingestion.text_chunker:_initialize_semantic_splitter:86 - Semantic splitter initialized successfully
+2025-05-24 12:26:20.102 | INFO     | src.ingestion.vector_db_manager:__init__:61 - Initializing QdrantClient with URL: 'http://localhost:6333'
+2025-05-24 12:26:20.102 | INFO     | src.ingestion.vector_db_manager:__init__:65 - No API key - connecting to local Qdrant instance
+2025-05-24 12:26:20.130 | INFO     | src.ingestion.vector_db_manager:__init__:86 - Testing Qdrant connection...
+2025-05-24 12:26:20.133 | INFO     | src.ingestion.vector_db_manager:__init__:88 - Successfully connected to Qdrant. Found 2 existing collections.
+2025-05-24 12:26:20.135 | INFO     | src.ingestion.vector_db_manager:_ensure_collection_exists:124 - Collection 'knowledge_base' already exists
+2025-05-24 12:26:20.148 | INFO     | src.rag.rag_engine:__init__:39 - Initialized RAGEngine with reranker=True, analyzer=True
+2025-05-24 12:26:20.148 | INFO     | src.api.knowledge_base_api:__init__:51 - KnowledgeBaseAPI initialized successfully
+2025-05-24 12:26:25.953 | INFO     | src.api.knowledge_base_api:ingest_documents:55 - Starting document ingestion...
+2025-05-24 12:26:25.959 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf
+2025-05-24 12:26:26.549 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:26:26.549 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf
+2025-05-24 12:26:26.549 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:26:26.549 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 7 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:26:27.302 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (7 chunks)
+2025-05-24 12:26:27.303 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 7/7 chunks
+2025-05-24 12:26:27.303 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 7 chunks to Qdrant...
+2025-05-24 12:26:27.339 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 7 points to collection 'knowledge_base'. Result: operation_id=12 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:26:27.340 | INFO     | src.ingestion.knowledge_ingestion:process_documents:87 - Successfully processed: /Users/logan/Git/Agents/RAGEngine/Context/Fwd: New Applicant for Position: Analytical Chemist LCMS Specialist in Breath Biomarker Analysis (ID #: 11470189).pdf
+2025-05-24 12:26:27.340 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf
+2025-05-24 12:26:27.811 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:26:27.811 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf
+2025-05-24 12:26:27.811 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:26:27.811 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 4 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:26:28.601 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (4 chunks)
+2025-05-24 12:26:28.601 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 4/4 chunks
+2025-05-24 12:26:28.601 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 4 chunks to Qdrant...
+2025-05-24 12:26:28.619 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 4 points to collection 'knowledge_base'. Result: operation_id=13 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:26:28.620 | INFO     | src.ingestion.knowledge_ingestion:process_documents:87 - Successfully processed: /Users/logan/Git/Agents/RAGEngine/Context/resume-anjam-sadik.pdf
+2025-05-24 12:26:28.620 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf
+2025-05-24 12:26:28.743 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:26:28.743 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf
+2025-05-24 12:26:28.743 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:26:28.743 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 8 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:26:29.254 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (8 chunks)
+2025-05-24 12:26:29.254 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 8/8 chunks
+2025-05-24 12:26:29.255 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 8 chunks to Qdrant...
+2025-05-24 12:26:29.293 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 8 points to collection 'knowledge_base'. Result: operation_id=14 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:26:29.295 | INFO     | src.ingestion.knowledge_ingestion:process_documents:87 - Successfully processed: /Users/logan/Git/Agents/RAGEngine/Context/Teerapong Jantarat Resume.pdf
+2025-05-24 12:26:29.295 | INFO     | src.ingestion.pdf_parser:parse_pdf:50 - Starting PDF parsing with PyMuPDF4LLM for: /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf
+2025-05-24 12:26:30.721 | INFO     | src.ingestion.pdf_parser:_extract_toc:141 - No TOC found in PDF
+2025-05-24 12:26:30.722 | SUCCESS  | src.ingestion.pdf_parser:parse_pdf:72 - Successfully parsed PDF with PyMuPDF4LLM: /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf
+2025-05-24 12:26:30.722 | INFO     | src.ingestion.text_chunker:_create_document_hierarchy:251 - No valid TOC provided, inferring structure from text
+2025-05-24 12:26:30.722 | INFO     | src.ingestion.text_chunker:chunk_document:231 - Successfully created 11 chunks using hybrid_hierarchical_semantic strategy
+2025-05-24 12:26:31.588 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (11 chunks)
+2025-05-24 12:26:31.588 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 11/11 chunks
+2025-05-24 12:26:31.589 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:189 - Upserting 11 chunks to Qdrant...
+2025-05-24 12:26:31.635 | INFO     | src.ingestion.vector_db_manager:upsert_embeddings:231 - Successfully upserted 11 points to collection 'knowledge_base'. Result: operation_id=15 status=<UpdateStatus.COMPLETED: 'completed'>
+2025-05-24 12:26:31.637 | INFO     | src.ingestion.knowledge_ingestion:process_documents:87 - Successfully processed: /Users/logan/Git/Agents/RAGEngine/Context/sanghati-bhattacharya-phdcv.pdf
+2025-05-24 12:26:31.637 | INFO     | src.ingestion.knowledge_ingestion:process_documents:94 - Ingestion complete: {'documents_processed': 4, 'chunks_created': 30, 'embeddings_generated': 30, 'errors': []}
+2025-05-24 12:27:38.665 | INFO     | src.api.knowledge_base_api:search:71 - Searching for: "What are the education credentials of each applicant from the CVs?"
+2025-05-24 12:27:38.665 | INFO     | src.rag.hybrid_searcher:hybrid_search:69 - Performing hybrid search for query: "What are the education credentials of each applicant from the CVs?"
+2025-05-24 12:27:39.118 | INFO     | src.ingestion.embedding_generator:generate_embeddings:119 - Successfully embedded batch 1 (1 chunks)
+2025-05-24 12:27:39.118 | INFO     | src.ingestion.embedding_generator:generate_embeddings:138 - Generated embeddings for 1/1 chunks
+2025-05-24 12:27:39.135 | INFO     | src.ingestion.vector_db_manager:dense_vector_search:366 - Dense vector search returned 10 results
+2025-05-24 12:27:39.135 | INFO     | src.rag.hybrid_searcher:_dense_search:125 - Dense search returned 10 results
+2025-05-24 12:27:39.147 | INFO     | src.ingestion.vector_db_manager:keyword_search:458 - Keyword search returned 0 results
+2025-05-24 12:27:39.147 | WARNING  | src.rag.hybrid_searcher:_sparse_search:164 - BM25 index not initialized and database search failed. No sparse search results.
+2025-05-24 12:27:39.147 | INFO     | src.rag.hybrid_searcher:_reciprocal_rank_fusion:252 - Reciprocal Rank Fusion returned 10 results
+2025-05-24 12:27:39.147 | INFO     | src.rag.rag_engine:retrieve_and_analyze:51 - Hybrid search returned 10 contexts
+2025-05-24 12:27:39.147 | INFO     | src.rag.reranker:rerank_contexts:69 - Re-ranking 10 contexts
+2025-05-24 12:27:41.897 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:27:44.199 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:27:46.965 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:27:48.997 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:27:56.489 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:27:58.538 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:28:00.457 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:28:02.223 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:28:04.525 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:28:14.818 | WARNING  | src.rag.reranker:_score_contexts_with_llm:131 - Error parsing score: Expecting value: line 1 column 1 (char 0). Setting score to 0.
+2025-05-24 12:28:14.818 | INFO     | src.rag.reranker:rerank_contexts:80 - Re-ranking complete. Selected top 5 contexts.
+2025-05-24 12:28:14.819 | INFO     | src.rag.rag_engine:retrieve_and_analyze:56 - Re-ranking returned 5 contexts
+2025-05-24 12:28:14.819 | INFO     | src.rag.deep_analyzer:synthesize_knowledge:106 - Synthesizing knowledge from 5 contexts
+2025-05-24 12:29:33.033 | INFO     | src.rag.deep_analyzer:synthesize_knowledge:125 - Successfully synthesized knowledge with 4 key concepts
+2025-05-24 12:29:33.034 | INFO     | src.rag.rag_engine:retrieve_and_analyze:63 - Knowledge synthesis completed
