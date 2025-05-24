@@ -138,7 +138,7 @@ class PdfParser:
             return toc  # Return empty toc if extraction fails
 
         if not raw_toc:
-            logger.info("No TOC found in PDF")
+            logger.debug("No TOC found in PDF")
             return toc
 
         for item in raw_toc:

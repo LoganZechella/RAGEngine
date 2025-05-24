@@ -21,7 +21,7 @@ class ReRanker:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "o4-mini",
+        model_name: str = "o4-mini-2025-04-16",
         temperature: float = 1,
         verbose: bool = False
     ):
@@ -102,34 +102,80 @@ class ReRanker:
                 # Create prompt for the LLM to evaluate relevance
                 prompt = self._create_scoring_prompt(query_text, context.text)
                 
-                # Call OpenAI API with JSON response format
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that evaluates the relevance of text passages to a query."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=self.temperature,
-                    response_format={"type": "json_object"},
-                    max_completion_tokens=150
-                )
+                # Call OpenAI API with improved handling for o4-mini structured output issues
+                try:
+                    # Use regular completion instead of structured output to avoid empty response issue
+                    response = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant that evaluates text relevance. Respond with a score between 0.0 and 1.0 followed by a brief justification."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=self.temperature,
+                        max_completion_tokens=10000,  # Reduced to avoid length limit issues
+                        timeout=60
+                    )
+                    
+                    # Validate response exists and has content
+                    if not response or not response.choices or not response.choices[0].message:
+                        logger.warning(f"Invalid response structure for context {i}. Setting score to 0.")
+                        context.rerank_score = 0.0
+                        scored_contexts.append(context)
+                        continue
+                        
+                except Exception as api_error:
+                    logger.error(f"OpenAI API error for context {i} with model '{self.model_name}': {api_error}")
+                    # Set a very low but non-zero score to preserve some ranking
+                    context.rerank_score = 0.01
+                    scored_contexts.append(context)
+                    continue
                 
-                # Extract score from response
+                # Extract and parse score from natural language response
                 response_text = response.choices[0].message.content
                 
                 if self.verbose:
                     logger.debug(f"Response for context {i}: {response_text}")
                 
-                # Parse the score from the JSON response
-                import json
+                # Parse score from natural language response (more reliable than JSON)
                 try:
-                    response_json = json.loads(response_text)
-                    score = float(response_json.get("relevance_score", 0))
-                    # Ensure score is within 0-1 range
-                    score = max(0, min(1, score))
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(f"Error parsing score: {e}. Setting score to 0.")
-                    score = 0
+                    # Check for empty or whitespace-only responses
+                    if not response_text or not response_text.strip():
+                        logger.warning(f"Empty response from model for context {i}. Setting score to 0.")
+                        score = 0.0
+                    else:
+                        # Extract score using regex pattern matching
+                        import re
+                        
+                        # Look for score patterns like "0.8", "Score: 0.7", "8/10", etc.
+                        score_patterns = [
+                            r'(?:score[:\s]*)?([0-1]\.?\d*)',  # "score: 0.8" or "0.8"
+                            r'(\d+)/10',  # "8/10" format
+                            r'(\d+)%'     # "80%" format
+                        ]
+                        
+                        score = 0.0
+                        for pattern in score_patterns:
+                            match = re.search(pattern, response_text.lower())
+                            if match:
+                                raw_score = float(match.group(1))
+                                # Convert different formats to 0-1 scale
+                                if '/10' in pattern:
+                                    score = raw_score / 10.0
+                                elif '%' in pattern:
+                                    score = raw_score / 100.0
+                                else:
+                                    score = raw_score
+                                break
+                        
+                        # Ensure score is within valid 0-1 range
+                        score = max(0.0, min(1.0, score))
+                        
+                        if self.verbose:
+                            logger.debug(f"Extracted score {score} from response: {response_text[:100]}...")
+                            
+                except Exception as e:
+                    logger.warning(f"Error parsing score for context {i}: {e}. Response was: '{response_text[:100]}...'. Setting score to 0.")
+                    score = 0.0
                 
                 # Update context with re-ranking score
                 context.rerank_score = score
@@ -157,24 +203,21 @@ class ReRanker:
         Returns:
             Prompt for the LLM
         """
-        return f"""
-Evaluate how relevant the following passage is to the query. 
-The passage should be considered highly relevant if it contains information that 
-would be useful for generating an accurate, comprehensive response to the query.
+        # Truncate context if too long to avoid token limit issues
+        max_context_length = 10000
+        if len(context) > max_context_length:
+            context = context[:max_context_length] + "..."
+            
+        return f"""Rate how relevant this text is to answering the query.
 
 Query: {query}
 
-Passage:
-{context}
+Text: {context}
 
-Return a JSON object with the following schema:
-{{
-    "relevance_score": <float between 0 and 1>,
-    "justification": <brief explanation of why this score was assigned>
-}}
+Rate from 0.0 (completely irrelevant) to 1.0 (perfectly relevant).
+Give your score and brief reason.
 
-Where 0 means completely irrelevant and 1 means highly relevant.
-"""
+Score:"""
 
     def get_reranker_info(self) -> Dict[str, Any]:
         """
@@ -185,7 +228,7 @@ Where 0 means completely irrelevant and 1 means highly relevant.
         """
         return {
             "model": self.model_name,
-            "max_tokens": 150,
+            "max_tokens": 10000, 
             "temperature": self.temperature,
             "api_available": self.client is not None
         }
