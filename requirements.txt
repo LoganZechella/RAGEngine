@@ -1,0 +1,39 @@
+# Core dependencies
+python-dotenv
+pydantic
+
+# PDF Parsing
+PyMuPDF  # For PDF text and structure extraction
+pymupdf4llm
+pytesseract  # For OCR support, if needed
+Pillow  # Required for image processing
+
+# Vector Database
+qdrant-client  # Qdrant vector database client
+
+# Embeddings & LLM API access
+openai  # For o4-mini and text-embedding-3-large
+google-generativeai  # For Gemini 2.5 Pro
+
+# Text processing
+nltk  # For text tokenization and processing
+sentence-transformers  # For semantic text splitting, if needed
+
+# BM25 for sparse search
+rank-bm25  # For keyword-based search
+
+# Utility
+tqdm  # For progress bars
+tenacity  # For robust retry mechanisms
+loguru  # Better logging
+numpy  # For numerical operations
+
+# Optional API server
+fastapi  # REST API server
+uvicorn  # ASGI server
+
+# Development dependencies
+pytest  # Testing
+pytest-asyncio  # Async testing
+black  # Code formatting
+isort  # Import sorting 
