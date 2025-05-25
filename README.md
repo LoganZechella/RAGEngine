@@ -253,6 +253,9 @@ Available commands:
 - ingest             : Run document ingestion
 - system             : Show system information
 - examples           : Show example queries
+- clear              : Clear all data from collection
+- delete_collection  : Delete entire collection
+- recreate_collection: Recreate collection with fresh config
 - quit               : Exit the shell
 
 RAG> query What are neural networks?
@@ -355,6 +358,22 @@ Get detailed system information and configuration.
 ##### `get_processed_documents() -> Dict[str, Dict]`
 
 Get list of all processed documents and their metadata.
+
+##### `delete_collection() -> bool`
+
+Delete the entire Qdrant collection. The collection will be recreated when data is next ingested.
+
+##### `clear_collection() -> bool`
+
+Clear all data from the collection while preserving the collection structure and configuration.
+
+##### `recreate_collection() -> bool`
+
+Delete and recreate the collection with fresh indexes for optimal performance.
+
+##### `delete_document(document_id: str) -> int`
+
+Delete all chunks associated with a specific document ID.
 
 ### REST API
 

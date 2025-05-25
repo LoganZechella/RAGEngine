@@ -214,4 +214,19 @@ class KnowledgeBaseAPI:
     def delete_collection(self) -> bool:
         """Delete the vector database collection."""
         logger.warning("Deleting vector database collection")
-        return self.vector_db.delete_collection() 
+        return self.vector_db.delete_collection()
+    
+    def clear_collection(self) -> bool:
+        """Clear all data from the collection without deleting the collection itself."""
+        logger.warning("Clearing all data from vector database collection")
+        return self.vector_db.clear_collection()
+    
+    def recreate_collection(self) -> bool:
+        """Delete and recreate the collection with fresh configuration."""
+        logger.warning("Recreating vector database collection")
+        return self.vector_db.recreate_collection()
+    
+    def delete_document(self, document_id: str) -> int:
+        """Delete all chunks for a specific document."""
+        logger.info(f"Deleting document: {document_id}")
+        return self.vector_db.delete_by_document_id(document_id) 

@@ -484,3 +484,101 @@ class VectorDBManager:
         except Exception as e:
             logger.error(f"Error getting collection info: {str(e)}")
             return {}
+    
+    def delete_collection(self) -> bool:
+        """
+        Delete the entire collection. This completely removes all data and the collection itself.
+        The collection will be recreated on next use.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.warning(f"Deleting entire collection '{self.collection_name}'")
+            result = self.client.delete_collection(collection_name=self.collection_name)
+            logger.info(f"Collection '{self.collection_name}' deleted successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting collection '{self.collection_name}': {str(e)}")
+            return False
+    
+    def clear_collection(self) -> bool:
+        """
+        Clear all points from the collection without deleting the collection itself.
+        This preserves the collection configuration but removes all data.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.warning(f"Clearing all points from collection '{self.collection_name}'")
+            
+            # Get all point IDs first
+            scroll_result = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=10000,  # Get a large batch
+                with_payload=False,
+                with_vectors=False
+            )
+            
+            all_points = scroll_result[0]
+            total_deleted = 0
+            
+            # Delete in batches if there are many points
+            while all_points:
+                point_ids = [point.id for point in all_points]
+                
+                if point_ids:
+                    result = self.client.delete(
+                        collection_name=self.collection_name,
+                        points_selector=qmodels.PointIdsList(points=point_ids)
+                    )
+                    deleted_count = len(point_ids)
+                    total_deleted += deleted_count
+                    logger.info(f"Deleted batch of {deleted_count} points")
+                
+                # Get next batch if there are more points
+                if scroll_result[1] is not None:  # next_page_offset
+                    scroll_result = self.client.scroll(
+                        collection_name=self.collection_name,
+                        offset=scroll_result[1],
+                        limit=10000,
+                        with_payload=False,
+                        with_vectors=False
+                    )
+                    all_points = scroll_result[0]
+                else:
+                    break
+            
+            logger.info(f"Successfully cleared {total_deleted} points from collection '{self.collection_name}'")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error clearing collection '{self.collection_name}': {str(e)}")
+            return False
+    
+    def recreate_collection(self) -> bool:
+        """
+        Delete and recreate the collection with the same configuration.
+        This ensures a completely clean collection with fresh indexes.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.warning(f"Recreating collection '{self.collection_name}'")
+            
+            # Delete the collection
+            if not self.delete_collection():
+                return False
+            
+            # Recreate the collection
+            self._ensure_collection_exists()
+            
+            logger.info(f"Collection '{self.collection_name}' recreated successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error recreating collection '{self.collection_name}': {str(e)}")
+            return False

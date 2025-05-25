@@ -43,6 +43,9 @@ class InteractiveRAGShell(cmd.Cmd):
     - system             : Show system information
     - last               : Show details from last query
     - examples           : Show example queries
+    - clear              : Clear all data from collection
+    - delete_collection  : Delete entire collection
+    - recreate_collection: Recreate collection with fresh config
     - help               : Show this help
     - quit               : Exit the shell
     
@@ -451,6 +454,73 @@ class InteractiveRAGShell(cmd.Cmd):
             print(f"   {i}. {query}")
         
         print(f"\nTry: query <example_text>")
+    
+    def do_clear(self, line):
+        """Clear all data from the collection without deleting the collection itself."""
+        print("\n⚠️  This will remove ALL data from the collection but preserve the collection configuration.")
+        confirm = input("Are you sure you want to clear all data? (yes/no): ").strip().lower()
+        
+        if confirm in ['yes', 'y']:
+            try:
+                print("\n🗑️  Clearing collection data...")
+                success = self.kb_api.clear_collection()
+                
+                if success:
+                    print("✅ Collection data cleared successfully!")
+                    print("   The collection structure is preserved.")
+                    print("   You can now run 'ingest' to reload your documents.")
+                else:
+                    print("❌ Failed to clear collection data.")
+                    
+            except Exception as e:
+                print(f"❌ Error clearing collection: {str(e)}")
+        else:
+            print("Operation cancelled.")
+    
+    def do_delete_collection(self, line):
+        """Delete the entire collection."""
+        print("\n⚠️  This will COMPLETELY DELETE the collection and all its data.")
+        print("   The collection will be recreated on next use.")
+        confirm = input("Are you sure you want to delete the collection? (yes/no): ").strip().lower()
+        
+        if confirm in ['yes', 'y']:
+            try:
+                print("\n🗑️  Deleting collection...")
+                success = self.kb_api.delete_collection()
+                
+                if success:
+                    print("✅ Collection deleted successfully!")
+                    print("   The collection will be recreated when you run 'ingest'.")
+                else:
+                    print("❌ Failed to delete collection.")
+                    
+            except Exception as e:
+                print(f"❌ Error deleting collection: {str(e)}")
+        else:
+            print("Operation cancelled.")
+    
+    def do_recreate_collection(self, line):
+        """Delete and recreate the collection with fresh configuration."""
+        print("\n⚠️  This will DELETE and RECREATE the collection with fresh indexes.")
+        print("   All data will be lost, but the collection will have optimal configuration.")
+        confirm = input("Are you sure you want to recreate the collection? (yes/no): ").strip().lower()
+        
+        if confirm in ['yes', 'y']:
+            try:
+                print("\n🔄 Recreating collection...")
+                success = self.kb_api.recreate_collection()
+                
+                if success:
+                    print("✅ Collection recreated successfully!")
+                    print("   The collection now has fresh indexes and optimal configuration.")
+                    print("   You can now run 'ingest' to reload your documents.")
+                else:
+                    print("❌ Failed to recreate collection.")
+                    
+            except Exception as e:
+                print(f"❌ Error recreating collection: {str(e)}")
+        else:
+            print("Operation cancelled.")
     
     def help_query(self):
         """Help for query command."""
