@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { systemInfo, documents, connectionStatus } from '$lib/stores/system';
   import { api } from '$lib/api';
 
   let loading = true;
   let error: string | null = null;
+  let quickSearchQuery = '';
+  let quickSearchMode = 'hybrid';
 
   onMount(async () => {
     try {
@@ -26,10 +29,9 @@
       
       // Set default values for offline mode
       systemInfo.set({
-        collection_info: {
-          total_documents: 0,
-          total_chunks: 0,
-          vector_dimensions: 1536
+        vector_db: {
+          points_count: 0,
+          vector_size: 1536
         }
       });
       documents.set([]);
@@ -37,6 +39,18 @@
       loading = false;
     }
   });
+
+  function handleQuickSearch(event: Event) {
+    event.preventDefault();
+    if (quickSearchQuery.trim()) {
+      // Navigate to search page with query parameters
+      const params = new URLSearchParams({
+        q: quickSearchQuery.trim(),
+        mode: quickSearchMode
+      });
+      goto(`/search?${params.toString()}`);
+    }
+  }
 </script>
 
 <div class="p-6">
@@ -73,17 +87,17 @@
       {#if $systemInfo}
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-blue-400">{$systemInfo.collection_info?.total_documents || 0}</div>
+            <div class="text-2xl font-bold text-blue-400">{$documents?.length || 0}</div>
             <div class="text-gray-300">Documents</div>
           </div>
           
           <div class="bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-green-400">{$systemInfo.collection_info?.total_chunks || 0}</div>
+            <div class="text-2xl font-bold text-green-400">{$systemInfo.vector_db?.points_count || 0}</div>
             <div class="text-gray-300">Chunks</div>
           </div>
           
           <div class="bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-purple-400">{$systemInfo.collection_info?.vector_dimensions || 0}</div>
+            <div class="text-2xl font-bold text-purple-400">{$systemInfo.config?.vector_dimensions || $systemInfo.vector_db?.vector_size || 0}</div>
             <div class="text-gray-300">Vector Dimensions</div>
           </div>
         </div>
@@ -97,16 +111,18 @@
   <div class="bg-gray-800 rounded-lg p-6 mb-8">
     <h3 class="text-xl font-semibold text-white mb-4">🔍 Quick Search</h3>
     
-    <form class="space-y-4">
+    <form on:submit={handleQuickSearch} class="space-y-4">
       <div class="flex gap-4">
         <input 
           type="text" 
+          bind:value={quickSearchQuery}
           placeholder="Enter your search query..." 
           class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
           disabled={error !== null}
+          required
         >
         
-        <select class="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white" disabled={error !== null}>
+        <select bind:value={quickSearchMode} class="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white" disabled={error !== null}>
           <option value="hybrid">Hybrid Search</option>
           <option value="dense">Dense Only</option>
           <option value="sparse">Sparse Only</option>
@@ -123,6 +139,8 @@
       
       {#if error}
         <p class="text-red-400 text-sm">Connect to backend to enable search functionality</p>
+      {:else}
+        <p class="text-gray-400 text-sm">Enter a query and press Search to navigate to the search page</p>
       {/if}
     </form>
   </div>

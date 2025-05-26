@@ -511,6 +511,66 @@ async def get_search_results(request: Request, task_id: str):
         "mode": mode
     })
 
+# JSON API Endpoints for SvelteKit Frontend
+
+@app.post("/api/search")
+async def api_search(
+    query: str = Form(...),
+    mode: str = Form("hybrid"),
+    synthesize: bool = Form(True)
+):
+    """JSON API endpoint for search functionality."""
+    if not kb_api:
+        raise HTTPException(status_code=503, detail="API not available")
+    
+    try:
+        logger.info(f"API search request - Query: '{query}', Mode: {mode}, Synthesize: {synthesize}")
+        
+        if mode == "dense":
+            results = kb_api.dense_search(query, top_k=10)
+            if synthesize and results.get("contexts"):
+                # Add synthesis for dense search
+                full_results = kb_api.search(query, synthesize=True)
+                results["synthesis"] = full_results.get("synthesis")
+        elif mode == "sparse":
+            results = kb_api.sparse_search(query, top_k=10)
+            if synthesize and results.get("contexts"):
+                # Add synthesis for sparse search
+                full_results = kb_api.search(query, synthesize=True)
+                results["synthesis"] = full_results.get("synthesis")
+        else:  # hybrid
+            results = kb_api.search(query, synthesize=synthesize)
+        
+        # Ensure consistent response format
+        if "contexts" not in results:
+            results["contexts"] = []
+        if "num_results" not in results:
+            results["num_results"] = len(results.get("contexts", []))
+        
+        # Transform contexts to match frontend expectations
+        transformed_contexts = []
+        for ctx in results.get("contexts", []):
+            transformed_ctx = {
+                "content": ctx.get("text", ""),
+                "score": ctx.get("score", ctx.get("rerank_score", ctx.get("initial_score", 0))),
+                "metadata": {
+                    "filename": ctx.get("metadata", {}).get("filename", "Unknown"),
+                    "page": ctx.get("metadata", {}).get("page"),
+                    "chunk_id": ctx.get("chunk_id"),
+                    **ctx.get("metadata", {})
+                }
+            }
+            transformed_contexts.append(transformed_ctx)
+        
+        results["contexts"] = transformed_contexts
+        
+        logger.info(f"Search completed - Found {results['num_results']} results")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Search API error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
 @app.post("/upload")
 async def upload_files(
     request: Request,
