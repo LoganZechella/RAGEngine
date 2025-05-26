@@ -18,6 +18,11 @@ try:
 except LookupError:
     nltk.download('punkt', quiet=True)
 
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab', quiet=True)
+
 from src.models.data_models import ParsedDocument, TextChunk, ChunkType
 from src.ingestion.content_filter import ScientificContentFilter
 

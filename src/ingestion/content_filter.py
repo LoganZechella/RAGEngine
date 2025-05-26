@@ -19,41 +19,37 @@ class ScientificContentFilter:
     def __init__(self):
         """Initialize the content filter with patterns for scientific documents."""
         
-        # Patterns to skip entirely
+        # Patterns for content that should be skipped entirely
         self.skip_patterns = [
             r'^Page \d+ of \d+$',                    # Page numbers
-            r'^Experiment \d+ Report - Page \d+',   # Report headers
+            r'^Experiment \d+ Report - Page \d+',   # Headers
             r'^APPENDIX [A-Z]\d*$',                  # Appendix headers only
             r'^\s*$',                                # Empty lines
-            r'^.*?Report.*?Page \d+ of \d+.*?$',    # Report headers with page numbers
+            r'^.*?Report.*?Page \d+ of \d+.*?$',    # Report headers
             r'^Table of Contents$',                  # TOC headers
-            r'^References$',                         # Reference section headers only
-            r'^Bibliography$',                       # Bibliography headers only
             r'^\d+\s*$',                            # Standalone numbers
-            r'^[A-Z\s]+$',                          # All caps headers without content
         ]
         
         # Boilerplate phrases that indicate low-value content
         self.boilerplate_phrases = {
             "The protocol is attached as Appendix",
             "Results as reported by Mayo",
-            "Table R1-", "Figure R1-",              # Table/figure references without context
-            "See Appendix for details",
-            "Data not shown",
-            "Results pending",
-            "To be determined",
-            "Under investigation",
-            "Contact laboratory for details",
+            "Table R1-", "Figure R1-",  # Table/figure references
+            "See Appendix",
+            "Refer to Section",
+            "As shown in Figure",
+            "Page intentionally left blank",
+            "End of Report",
+            "Confidential and Proprietary"
         }
         
-        # Patterns for header/footer content
+        # Patterns for repetitive headers/footers
         self.header_footer_patterns = [
             r'^.*?Confidential.*?$',
-            r'^.*?Internal Use Only.*?$',
-            r'^.*?Draft.*?$',
-            r'^.*?Version \d+\.\d+.*?$',
-            r'^.*?Copyright.*?$',
-            r'^.*?All rights reserved.*?$',
+            r'^.*?Proprietary.*?$',
+            r'^\w+\s+\d{4}\s*$',  # Month Year
+            r'^Report\s+\d+.*?$',
+            r'^Version\s+\d+.*?$'
         ]
         
         # Minimum content thresholds
@@ -74,12 +70,12 @@ class ScientificContentFilter:
         Determine if a chunk should be skipped entirely.
         
         Args:
-            text: Text content to evaluate
+            text: The text content to evaluate
             
         Returns:
-            True if chunk should be skipped, False otherwise
+            True if the chunk should be skipped, False otherwise
         """
-        if not text or len(text.strip()) < self.min_chunk_length:
+        if not text or len(text.strip()) < 50:  # Too short to be meaningful
             return True
         
         text_stripped = text.strip()
@@ -93,25 +89,31 @@ class ScientificContentFilter:
         # Check for header/footer patterns
         for pattern in self.header_footer_patterns:
             if re.match(pattern, text_stripped, re.IGNORECASE):
-                logger.debug(f"Skipping header/footer content: {pattern}")
-                return True
+                if len(text_stripped) < 200:  # Only skip if it's short
+                    logger.debug(f"Skipping header/footer: {text_stripped[:50]}...")
+                    return True
         
         # Check boilerplate content
         for phrase in self.boilerplate_phrases:
-            if phrase in text and len(text) < 200:  # Short text with boilerplate
-                logger.debug(f"Skipping boilerplate content: {phrase}")
-                self.stats['boilerplate_removed'] += 1
+            if phrase in text and len(text) < 200:
+                logger.debug(f"Skipping boilerplate chunk: {phrase}")
                 return True
         
-        # Check if content is mostly numbers/tables without context
-        if self._is_mostly_tabular_without_context(text):
-            logger.debug("Skipping tabular content without context")
-            return True
-        
-        # Check word count
+        # Skip if mostly numbers/tables without meaningful text
         words = text.split()
-        if len(words) < self.min_meaningful_words:
-            return True
+        if len(words) > 10:
+            numeric_ratio = sum(1 for word in words if re.match(r'^\d+\.?\d*$', word)) / len(words)
+            if numeric_ratio > 0.7:  # More than 70% numbers
+                logger.debug("Skipping chunk with high numeric content")
+                return True
+        
+        # Skip repetitive content (like repeated headers)
+        lines = text.split('\n')
+        if len(lines) > 3:
+            unique_lines = set(line.strip() for line in lines if line.strip())
+            if len(unique_lines) / len([l for l in lines if l.strip()]) < 0.5:
+                logger.debug("Skipping repetitive content")
+                return True
         
         return False
     
@@ -128,39 +130,28 @@ class ScientificContentFilter:
         if not text:
             return ""
         
-        original_length = len(text)
-        
         # Remove excessive whitespace
         text = re.sub(r'\s+', ' ', text)
         
         # Remove isolated page numbers
         text = re.sub(r'(?:^|\s)Page \d+(?:\s|$)', ' ', text)
         
-        # Remove report headers embedded in text
-        text = re.sub(r'Experiment \d+ Report - Page \d+', '', text)
+        # Remove common artifacts
+        text = re.sub(r'(?:^|\s)PAGE \d+(?:\s|$)', ' ', text)
+        text = re.sub(r'\bpp?\.\s*\d+\b', '', text)  # Remove page references
         
         # Normalize quotes and dashes
         text = text.replace('"', '"').replace('"', '"')
         text = text.replace('–', '-').replace('—', '-')
         
-        # Remove multiple consecutive periods
+        # Remove multiple consecutive periods/dots (often OCR artifacts)
         text = re.sub(r'\.{3,}', '...', text)
         
         # Clean up spacing around punctuation
-        text = re.sub(r'\s+([,.;:!?])', r'\1', text)
-        text = re.sub(r'([,.;:!?])\s+', r'\1 ', text)
+        text = re.sub(r'\s+([,.!?;:])', r'\1', text)
+        text = re.sub(r'([,.!?;:])\s*([,.!?;:])', r'\1 \2', text)
         
-        # Remove header/footer content
-        for pattern in self.header_footer_patterns:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-        
-        # Final cleanup
-        text = text.strip()
-        
-        if len(text) < original_length * 0.8:  # Significant cleaning occurred
-            self.stats['chunks_cleaned'] += 1
-        
-        return text
+        return text.strip()
     
     def _is_mostly_tabular_without_context(self, text: str) -> bool:
         """
@@ -201,18 +192,18 @@ class ScientificContentFilter:
     
     def extract_table_summary(self, table_text: str) -> str:
         """
-        Create concise summary of tabular data instead of full content.
+        Create concise summary of tabular data for large tables.
         
         Args:
-            table_text: Full table text
+            table_text: Raw table text
             
         Returns:
-            Summarized table description
+            Summarized table content or original if small
         """
         lines = [line.strip() for line in table_text.split('\n') if line.strip()]
         
-        if not lines:
-            return ""
+        if len(lines) <= 5:  # Small table, keep as-is
+            return table_text
         
         # Extract header if present
         header = lines[0] if lines else ""
@@ -220,24 +211,23 @@ class ScientificContentFilter:
         # Count data rows
         data_rows = len(lines) - 1 if len(lines) > 1 else 0
         
-        # Look for table caption or title
-        caption_match = re.search(r'Table\s+\d+[:\-]?\s*(.+)', table_text, re.IGNORECASE)
-        caption = caption_match.group(1) if caption_match else ""
-        
-        # Create summary instead of full table for large tables
-        if data_rows > 5:  # Large table
-            summary = f"Table: {caption or header}\n"
-            summary += f"Contains {data_rows} data entries with experimental results."
+        # For large tables, create summary
+        if data_rows > 10:
+            summary = f"Table: {header}\n"
+            summary += f"Contains {data_rows} data entries with experimental results.\n"
             
-            # Add key column information if detectable
-            if '|' in header or '\t' in header:
-                columns = len(header.split('|' if '|' in header else '\t'))
-                summary += f" Data organized in {columns} columns."
+            # Include first few rows as examples
+            if len(lines) > 3:
+                summary += "Sample entries:\n"
+                for line in lines[1:4]:  # First 3 data rows
+                    summary += f"  {line}\n"
+                
+            if data_rows > 3:
+                summary += f"  ... and {data_rows - 3} more entries"
             
             return summary
-        else:
-            # Keep small tables as-is but clean them
-            return self.clean_text(table_text)
+        
+        return table_text  # Keep medium tables as-is
     
     def get_content_hash(self, text: str) -> str:
         """
@@ -252,6 +242,11 @@ class ScientificContentFilter:
         # Normalize text for hashing
         normalized = re.sub(r'\s+', ' ', text.lower().strip())
         normalized = re.sub(r'[^\w\s]', '', normalized)  # Remove punctuation
+        
+        # Remove common variations that shouldn't affect deduplication
+        normalized = re.sub(r'\b(?:page|pp?\.?)\s*\d+\b', '', normalized)
+        normalized = re.sub(r'\b(?:figure|fig\.?|table|tab\.?)\s*\d+\b', '', normalized)
+        
         return hashlib.md5(normalized.encode()).hexdigest()
     
     def is_duplicate_content(self, text: str, seen_hashes: Set[str]) -> bool:
@@ -323,4 +318,32 @@ class ScientificContentFilter:
             'chunks_cleaned': 0,
             'boilerplate_removed': 0,
             'duplicates_removed': 0
-        } 
+        }
+
+    def should_merge_chunks(self, chunk1_text: str, chunk2_text: str) -> bool:
+        """
+        Determine if two consecutive chunks should be merged.
+        
+        Args:
+            chunk1_text: First chunk text
+            chunk2_text: Second chunk text
+            
+        Returns:
+            True if chunks should be merged
+        """
+        # Don't merge if either is too long
+        if len(chunk1_text.split()) > 400 or len(chunk2_text.split()) > 400:
+            return False
+        
+        # Merge if second chunk is very short and seems like a continuation
+        if len(chunk2_text.split()) < 20:
+            # Check if it starts with lowercase (likely continuation)
+            first_word = chunk2_text.strip().split()[0] if chunk2_text.strip() else ""
+            if first_word and first_word[0].islower():
+                return True
+            
+            # Check if it's just a list item or incomplete sentence
+            if re.match(r'^[•\-\*\d+\.]', chunk2_text.strip()):
+                return True
+        
+        return False 
