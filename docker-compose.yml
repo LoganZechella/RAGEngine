@@ -3,8 +3,6 @@
 # Production-ready multi-container setup
 # =============================================================================
 
-version: '3.9'
-
 services:
   # =============================================================================
   # Qdrant Vector Database
@@ -23,7 +21,7 @@ services:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/6333' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -100,7 +98,6 @@ services:
       backend:
         condition: service_healthy
     environment:
-      - VITE_API_BASE_URL=http://backend:8080
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
     entrypoint: ["/docker/frontend/entrypoint.sh"]

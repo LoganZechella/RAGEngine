@@ -6,25 +6,28 @@
 # =============================================================================
 # Stage 1: Build Dependencies
 # =============================================================================
-FROM python:3.11-alpine AS builder
+FROM python:3.12 AS builder
 
-# Install build dependencies
-RUN apk add --no-cache \
+# Install build dependencies for Debian-based image
+RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    musl-dev \
-    linux-headers \
+    libc6-dev \
+    linux-libc-dev \
     libffi-dev \
-    openssl-dev \
+    libssl-dev \
     cargo \
-    rust \
-    freetype-dev \
-    jpeg-dev \
-    openjpeg-dev \
-    zlib-dev \
-    libjpeg-turbo-dev \
-    tesseract-ocr-dev \
-    mupdf-dev
+    rustc \
+    libfreetype6-dev \
+    libjpeg-dev \
+    libopenjp2-7-dev \
+    zlib1g-dev \
+    libjpeg62-turbo-dev \
+    tesseract-ocr \
+    libtesseract-dev \
+    libmupdf-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
 RUN python -m venv /opt/venv
@@ -38,35 +41,35 @@ COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Download NLTK data
-RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet')"
 
 # =============================================================================
 # Stage 2: Runtime Image
 # =============================================================================
-FROM python:3.11-alpine AS runtime
+FROM python:3.12 AS runtime
 
-# Install runtime dependencies only
-RUN apk add --no-cache \
+# Install runtime dependencies only for Debian-based image
+RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     mupdf \
-    freetype \
-    jpeg \
-    openjpeg \
-    zlib \
-    libjpeg-turbo \
+    libfreetype6 \
+    libjpeg62-turbo \
+    libopenjp2-7 \
+    zlib1g \
     curl \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1000 ragengine && \
-    adduser -D -s /bin/sh -u 1000 -G ragengine ragengine
+RUN groupadd -g 1000 ragengine && \
+    useradd -r -u 1000 -g ragengine -s /bin/bash ragengine
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy NLTK data from builder
+# Copy NLTK data from builder and set proper ownership
 COPY --from=builder /root/nltk_data /home/ragengine/nltk_data
+RUN chown -R ragengine:ragengine /home/ragengine/nltk_data
 ENV NLTK_DATA=/home/ragengine/nltk_data
 
 # Set working directory
@@ -75,6 +78,10 @@ WORKDIR /app
 # Copy application code
 COPY backend/ /app/
 COPY run_web.py /app/
+
+# Copy static files and templates
+COPY static/ /app/static/
+COPY templates/ /app/templates/
 
 # Copy entrypoint script
 COPY docker/backend/entrypoint.sh /docker/backend/entrypoint.sh

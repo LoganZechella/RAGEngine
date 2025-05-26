@@ -88,9 +88,15 @@ class RAGEngineAPI {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = browser ? 
-      (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') : 
-      'http://localhost:8080';
+    // In Docker/production, use the backend service URL
+    // In development, use the environment variable or localhost
+    if (browser) {
+      // Check if we're in a Docker environment by looking for the backend service
+      this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    } else {
+      // Server-side rendering - use localhost
+      this.baseURL = 'http://localhost:8080';
+    }
   }
 
   async request(endpoint: string, options: RequestOptions = {}): Promise<any> {

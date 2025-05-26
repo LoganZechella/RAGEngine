@@ -20,6 +20,9 @@ RUN npm ci --only=production --silent
 # Copy source code
 COPY RAGEngine-Frontend/ ./
 
+# Set build-time environment variables for Docker deployment
+ENV VITE_API_BASE_URL=http://localhost:8080
+
 # Build the application
 RUN npm run build
 
@@ -31,9 +34,9 @@ FROM node:18-alpine AS runtime
 # Install curl for health checks
 RUN apk add --no-cache curl
 
-# Create non-root user
-RUN addgroup -g 1000 ragengine && \
-    adduser -D -s /bin/sh -u 1000 -G ragengine ragengine
+# Create non-root user with available IDs
+RUN addgroup -g 1001 ragengine && \
+    adduser -D -s /bin/sh -u 1001 -G ragengine ragengine
 
 # Set working directory
 WORKDIR /app

@@ -3,8 +3,6 @@
 # Extends the main docker-compose.yml with development-specific settings
 # =============================================================================
 
-version: '3.9'
-
 services:
   # =============================================================================
   # Backend Development Overrides
