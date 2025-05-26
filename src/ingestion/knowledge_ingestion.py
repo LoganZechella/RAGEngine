@@ -20,19 +20,23 @@ class KnowledgeIngestion:
         qdrant_api_key: Optional[str] = None,
         collection_name: str = "knowledge_base",
         chunking_strategy: str = "paragraph",
-        max_chunk_size_tokens: int = 1024,
-        chunk_overlap_tokens: int = 200,
-        vector_dimensions: int = 3072
+        max_chunk_size_tokens: int = 512,
+        chunk_overlap_tokens: int = 100,
+        vector_dimensions: int = 1536,
+        enable_content_filtering: bool = True,
+        enable_deduplication: bool = True
     ):
         self.source_paths = source_paths
         
-        # Initialize components
+        # Initialize components with optimization settings
         self.document_manager = DocumentSourceManager(source_paths)
-        self.pdf_parser = PdfParser()
+        self.pdf_parser = PdfParser(enable_content_filtering=enable_content_filtering)
         self.text_chunker = TextChunker(
             strategy=chunking_strategy,
             max_chunk_size_tokens=max_chunk_size_tokens,
-            chunk_overlap_tokens=chunk_overlap_tokens
+            chunk_overlap_tokens=chunk_overlap_tokens,
+            enable_deduplication=enable_deduplication,
+            enable_content_filtering=enable_content_filtering
         )
         self.embedding_generator = EmbeddingGenerator(
             api_key=openai_api_key,

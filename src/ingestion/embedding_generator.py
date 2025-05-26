@@ -1,6 +1,7 @@
 """
 Embedding Generator for RAG Engine.
-Generates embeddings for text chunks using OpenAI's text-embedding-3-large model.
+Generates embeddings for text chunks using OpenAI's text-embedding-3-small model.
+Optimized for cost efficiency with 85% reduction compared to text-embedding-3-large.
 Extracted from APEGA with full functionality preserved.
 """
 
@@ -18,15 +19,16 @@ from src.models.data_models import TextChunk, EmbeddedChunk
 
 class EmbeddingGenerator:
     """
-    Generates vector embeddings for text chunks using OpenAI's text-embedding-3-large model.
+    Generates vector embeddings for text chunks using OpenAI's text-embedding-3-small model.
+    Optimized for cost efficiency (85% cheaper than text-embedding-3-large).
     Includes robust error handling and rate limit management.
     """
     
     def __init__(
         self, 
         api_key: Optional[str] = None,
-        model_name: str = "text-embedding-3-large",
-        dimensions: int = 3072,
+        model_name: str = "text-embedding-3-small",
+        dimensions: int = 1536,
         max_retries: int = 5
     ):
         """
@@ -35,7 +37,7 @@ class EmbeddingGenerator:
         Args:
             api_key: OpenAI API key (defaults to environment variable)
             model_name: Name of the embedding model
-            dimensions: Dimensionality of embeddings (native 3072 for text-embedding-3-large)
+            dimensions: Dimensionality of embeddings (native 1536 for text-embedding-3-small)
             max_retries: Maximum number of retry attempts for API calls
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")

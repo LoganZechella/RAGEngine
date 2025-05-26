@@ -74,9 +74,9 @@ class InteractiveRAGShell(cmd.Cmd):
                 "collection_name": os.getenv("COLLECTION_NAME", "knowledge_base"),
                 "source_paths": [os.getenv("SOURCE_DOCUMENTS_DIR", "./documents")],
                 "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "paragraph"),
-                "chunk_size_tokens": int(os.getenv("CHUNK_SIZE_TOKENS", "1024")),
-                "chunk_overlap_tokens": int(os.getenv("CHUNK_OVERLAP_TOKENS", "200")),
-                "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "3072")),
+                "chunk_size_tokens": int(os.getenv("CHUNK_SIZE_TOKENS", "512")),
+                "chunk_overlap_tokens": int(os.getenv("CHUNK_OVERLAP_TOKENS", "100")),
+                "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
                 "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
                 "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
                 "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))

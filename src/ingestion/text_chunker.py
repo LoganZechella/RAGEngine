@@ -6,7 +6,8 @@ Extracted from APEGA with full functionality preserved.
 
 import re
 import nltk
-from typing import List, Dict, Any, Optional, Tuple
+import hashlib
+from typing import List, Dict, Any, Optional, Tuple, Set
 from loguru import logger
 import os
 from enum import Enum
@@ -18,6 +19,7 @@ except LookupError:
     nltk.download('punkt', quiet=True)
 
 from src.models.data_models import ParsedDocument, TextChunk, ChunkType
+from src.ingestion.content_filter import ScientificContentFilter
 
 
 class ChunkingStrategy(str, Enum):
@@ -39,8 +41,10 @@ class TextChunker:
     def __init__(
         self, 
         strategy: str = 'hybrid_hierarchical_semantic',
-        max_chunk_size_tokens: int = 1024,
-        chunk_overlap_tokens: int = 200
+        max_chunk_size_tokens: int = 512,
+        chunk_overlap_tokens: int = 100,
+        enable_deduplication: bool = True,
+        enable_content_filtering: bool = True
     ):
         """
         Initialize the TextChunker.
@@ -49,10 +53,25 @@ class TextChunker:
             strategy: Chunking strategy to use
             max_chunk_size_tokens: Maximum number of tokens per chunk
             chunk_overlap_tokens: Number of tokens to overlap between chunks
+            enable_deduplication: Whether to enable hash-based deduplication
+            enable_content_filtering: Whether to enable content filtering
         """
         self.strategy = strategy
         self.max_chunk_size_tokens = max_chunk_size_tokens
         self.chunk_overlap_tokens = chunk_overlap_tokens
+        self.enable_deduplication = enable_deduplication
+        self.enable_content_filtering = enable_content_filtering
+        
+        # Initialize content filter and deduplication tracking
+        if self.enable_content_filtering:
+            self.content_filter = ScientificContentFilter()
+        else:
+            self.content_filter = None
+            
+        if self.enable_deduplication:
+            self.seen_hashes: Set[str] = set()
+        else:
+            self.seen_hashes = set()
         
         # Optional semantic splitter with improved error handling
         self.semantic_splitter = None
@@ -99,6 +118,61 @@ class TextChunker:
             logger.info("  - Missing dependencies for the transformers library")
             logger.info("Continuing with non-semantic chunking strategies...")
             return False
+    
+    def _get_content_hash(self, text: str) -> str:
+        """
+        Generate hash for content deduplication.
+        
+        Args:
+            text: Text content
+            
+        Returns:
+            MD5 hash of normalized content
+        """
+        if self.content_filter:
+            return self.content_filter.get_content_hash(text)
+        else:
+            # Fallback hash generation if no content filter
+            normalized = re.sub(r'\s+', ' ', text.lower().strip())
+            normalized = re.sub(r'[^\w\s]', '', normalized)  # Remove punctuation
+            return hashlib.md5(normalized.encode()).hexdigest()
+    
+    def _deduplicate_chunks(self, chunks: List[TextChunk]) -> List[TextChunk]:
+        """
+        Remove duplicate and near-duplicate chunks.
+        
+        Args:
+            chunks: List of TextChunk objects
+            
+        Returns:
+            List of unique TextChunk objects
+        """
+        if not self.enable_deduplication:
+            return chunks
+        
+        unique_chunks = []
+        original_count = len(chunks)
+        
+        for chunk in chunks:
+            # Skip if content should be filtered (if content filtering enabled)
+            if self.enable_content_filtering and self.content_filter:
+                if self.content_filter.should_skip_chunk(chunk.text):
+                    continue
+            
+            # Check for exact duplicates
+            content_hash = self._get_content_hash(chunk.text)
+            if content_hash in self.seen_hashes:
+                logger.debug(f"Skipping duplicate chunk: {chunk.chunk_id}")
+                continue
+            
+            self.seen_hashes.add(content_hash)
+            unique_chunks.append(chunk)
+        
+        duplicates_removed = original_count - len(unique_chunks)
+        if duplicates_removed > 0:
+            logger.info(f"Deduplication: {original_count} → {len(unique_chunks)} chunks ({duplicates_removed} duplicates removed)")
+        
+        return unique_chunks
     
     def chunk_document(self, parsed_doc: ParsedDocument) -> List[TextChunk]:
         """
@@ -208,6 +282,12 @@ class TextChunker:
                 chunks = [chunk for chunk in chunks if chunk.text and chunk.text.strip()]
             except Exception as filter_error:
                 logger.error(f"Error filtering chunks: {filter_error}")
+        
+        # Apply deduplication and content filtering
+        try:
+            chunks = self._deduplicate_chunks(chunks)
+        except Exception as e:
+            logger.warning(f"Error during deduplication: {e}")
         
         # Final validation - ensure we have at least one chunk
         if not chunks:

@@ -12,6 +12,7 @@ import os
 from loguru import logger
 
 from src.models.data_models import ParsedDocument, StructuredTable, DocumentType
+from src.ingestion.content_filter import ScientificContentFilter
 
 
 class PdfParser:
@@ -19,16 +20,26 @@ class PdfParser:
     Extracts text, tables, and structural metadata from PDF documents using PyMuPDF4LLM.
     """
     
-    def __init__(self, use_ocr: bool = False, ocr_language: str = 'eng'):
+    def __init__(self, use_ocr: bool = False, ocr_language: str = 'eng', enable_content_filtering: bool = True):
         """
         Initialize the PDF parser.
         
         Args:
             use_ocr: Whether to use OCR (Note: PyMuPDF4LLM handles underlying text extraction)
             ocr_language: Language for OCR (Note: PyMuPDF4LLM handles underlying text extraction)
+            enable_content_filtering: Whether to enable optimized content filtering for scientific documents
         """
         self.use_ocr = use_ocr
         self.ocr_language = ocr_language
+        self.enable_content_filtering = enable_content_filtering
+        
+        # Initialize content filter for scientific documents
+        if self.enable_content_filtering:
+            self.content_filter = ScientificContentFilter()
+            logger.info("Content filtering enabled for scientific document optimization")
+        else:
+            self.content_filter = None
+            
         # Note: With PyMuPDF4LLM, direct OCR control here might be less critical
         # as it handles text extraction comprehensively.
 
@@ -47,10 +58,37 @@ class PdfParser:
         
         document_id = os.path.basename(file_path).replace('.pdf', '')
         
-        logger.info(f"Starting PDF parsing with PyMuPDF4LLM for: {file_path}")
+        logger.info(f"Starting optimized PDF parsing for: {file_path}")
         try:
-            # PyMuPDF4LLM's to_markdown function converts the entire PDF to Markdown
-            markdown_output = pymupdf4llm.to_markdown(file_path, page_chunks=False)
+            # Use page_chunks=True for better processing control and filtering
+            if self.enable_content_filtering:
+                markdown_pages = pymupdf4llm.to_markdown(
+                    file_path, 
+                    page_chunks=True,  # Changed from False for page-level processing
+                    show_progress=False
+                )
+                
+                # Filter and process pages
+                filtered_content = []
+                for page_idx, page in enumerate(markdown_pages):
+                    page_text = page.get('text', '')
+                    
+                    # Skip pages with minimal content
+                    if len(page_text.strip()) < 100:
+                        continue
+                    
+                    # Filter the page content
+                    cleaned_text = self.content_filter.filter_page_content(page_text)
+                    if cleaned_text:
+                        filtered_content.append(cleaned_text)
+                
+                # Combine filtered pages
+                markdown_output = "\n\n".join(filtered_content)
+                
+                logger.info(f"Content filtering: {len(filtered_content)}/{len(markdown_pages)} pages retained")
+            else:
+                # Fallback to original method if filtering disabled
+                markdown_output = pymupdf4llm.to_markdown(file_path, page_chunks=False)
             
             # Open with fitz for metadata and TOC extraction
             doc = fitz.open(file_path)
@@ -60,8 +98,14 @@ class PdfParser:
             toc = self._extract_toc(doc)
             metadata['toc'] = toc  # Put TOC in metadata where text_chunker expects it
             
-            # Add page count to metadata
+            # Add page count and filtering stats to metadata
             metadata['page_count'] = len(doc)
+            
+            if self.enable_content_filtering and self.content_filter:
+                filtering_stats = self.content_filter.get_filtering_stats()
+                metadata['filtering_stats'] = filtering_stats
+                metadata['filtered_pages'] = len(filtered_content) if 'filtered_content' in locals() else len(doc)
+                logger.info(f"Content filtering stats: {filtering_stats}")
             
             doc.close()
 
@@ -69,7 +113,10 @@ class PdfParser:
             # For now, we'll return an empty list as tables are in the markdown
             tables: List[StructuredTable] = []
             
-            logger.success(f"Successfully parsed PDF with PyMuPDF4LLM: {file_path}")
+            if self.enable_content_filtering:
+                logger.success(f"Successfully parsed and filtered PDF: {file_path}")
+            else:
+                logger.success(f"Successfully parsed PDF: {file_path}")
             
             return ParsedDocument(
                 document_id=document_id,

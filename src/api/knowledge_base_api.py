@@ -107,7 +107,7 @@ class KnowledgeBaseAPI:
                     }
                     for ctx in contexts
                 ],
-                "synthesis": synthesis.dict() if synthesis and synthesize else None
+                "synthesis": synthesis if synthesis and synthesize else None
             }
     
     def dense_search(
@@ -188,7 +188,7 @@ class KnowledgeBaseAPI:
                     }
                     for ctx in contexts
                 ],
-                "synthesis": synthesis.dict() if synthesis and synthesize else None
+                "synthesis": synthesis if synthesis and synthesize else None
             })
         
         return formatted_results

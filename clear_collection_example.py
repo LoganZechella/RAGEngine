@@ -22,7 +22,7 @@ def main():
         "qdrant_api_key": os.getenv("QDRANT_API_KEY"),
         "collection_name": os.getenv("COLLECTION_NAME", "knowledge_base"),
         "source_paths": [os.getenv("SOURCE_DOCUMENTS_DIR", "./documents")],
-        "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "3072")),
+        "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
     }
     
     print("🔧 Initializing Knowledge Base API...")

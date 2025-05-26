@@ -27,7 +27,7 @@ class VectorDBManager:
         url: Optional[str] = None,
         api_key: Optional[str] = None,
         collection_name: Optional[str] = None,
-        vector_dimensions: int = 3072,
+        vector_dimensions: int = 1536,
         distance_metric: str = "cosine"  # Keep input as string for simplicity
     ):
         """
