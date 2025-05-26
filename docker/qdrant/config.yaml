@@ -1,0 +1,45 @@
+# =============================================================================
+# Qdrant Configuration for RAGEngine
+# Optimized for production performance and reliability
+# =============================================================================
+
+service:
+  # HTTP API configuration
+  http_port: 6333
+  grpc_port: 6334
+  
+  # Performance settings
+  max_request_size_mb: 32
+  max_workers: 4
+  
+  # Enable CORS for web interface
+  enable_cors: true
+  
+  # Telemetry (disable for privacy)
+  telemetry_disabled: true
+
+storage:
+  # Storage performance optimizations
+  performance:
+    max_search_threads: 4
+    max_optimization_threads: 2
+    
+  # Snapshot configuration
+  snapshots_path: "./snapshots"
+  
+  # WAL configuration for durability
+  wal:
+    wal_capacity_mb: 32
+    wal_segments_ahead: 0
+
+cluster:
+  # Single node configuration (can be extended for clustering)
+  enabled: false
+
+log_level: INFO
+
+# Security settings (uncomment and configure for production)
+# service:
+#   api_key: "your-secure-api-key-here"
+#   read_timeout_ms: 60000
+#   write_timeout_ms: 60000
