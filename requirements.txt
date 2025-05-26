@@ -32,6 +32,11 @@ numpy  # For numerical operations
 fastapi  # REST API server
 uvicorn  # ASGI server
 
+# Web Frontend Dependencies
+jinja2  # Template engine for web interface
+python-multipart  # For handling file uploads
+aiofiles # Async file operations
+
 # Development dependencies
 pytest  # Testing
 pytest-asyncio  # Async testing

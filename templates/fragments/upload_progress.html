@@ -1,0 +1,70 @@
+<div class="bg-gray-700 rounded-lg p-4" hx-ext="sse" hx-sse="connect:/progress/{{ task_id }}">
+    <h4 class="font-semibold text-white mb-3">📤 Upload Progress</h4>
+    
+    <div class="space-y-3">
+        <!-- Progress Bar -->
+        <div class="relative">
+            <div class="w-full bg-gray-600 rounded-full h-2">
+                <div 
+                    class="bg-blue-600 h-2 rounded-full progress-bar transition-all duration-300" 
+                    style="width: 0%"
+                    hx-sse="swap:message"
+                    hx-swap="none"
+                    hx-trigger="sse:message"
+                    _="on sse:message 
+                       set data to JSON.parse(event.data)
+                       set my style.width to data.progress + '%'
+                       if data.progress >= 100
+                         add .bg-green-600 to me
+                         remove .bg-blue-600 from me
+                       end"
+                ></div>
+            </div>
+            <div class="flex justify-between text-sm text-gray-400 mt-1">
+                <span 
+                    hx-sse="swap:message"
+                    hx-trigger="sse:message"
+                    _="on sse:message 
+                       set data to JSON.parse(event.data)
+                       put data.message into me"
+                >Preparing...</span>
+                <span 
+                    hx-sse="swap:message"
+                    hx-trigger="sse:message"
+                    _="on sse:message 
+                       set data to JSON.parse(event.data)
+                       put data.progress + '%' into me"
+                >0%</span>
+            </div>
+        </div>
+        
+        <!-- Status Messages -->
+        <div 
+            class="text-sm text-gray-300"
+            hx-sse="swap:message"
+            hx-trigger="sse:message"
+            _="on sse:message 
+               set data to JSON.parse(event.data)
+               if data.errors and data.errors.length > 0
+                 set errorHtml to ''
+                 for error in data.errors
+                   set errorHtml to errorHtml + '<div class=\"text-red-400 text-xs mt-1\">⚠️ ' + error + '</div>'
+                 end
+                 put errorHtml after me
+               end
+               if data.status == 'completed'
+                 add .text-green-400 to me
+                 put '✅ ' + data.message into me
+               else if data.status == 'error'
+                 add .text-red-400 to me
+                 put '❌ ' + data.message into me
+               else
+                 put '⏳ ' + data.message into me
+               end"
+        >
+            Preparing upload...
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/hyperscript.org@0.9.12"></script> 

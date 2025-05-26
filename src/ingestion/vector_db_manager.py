@@ -472,13 +472,15 @@ class VectorDBManager:
         try:
             info = self.client.get_collection(collection_name=self.collection_name)
             return {
-                "name": info.name,
+                "name": self.collection_name,  # Use the collection name from our instance
                 "vector_size": info.config.params.vectors.size,
-                "distance": info.config.params.vectors.distance,
+                "distance": str(info.config.params.vectors.distance),
                 "points_count": info.points_count,
                 "vectors_count": info.vectors_count,
                 "indexed_vectors_count": getattr(info, "indexed_vectors_count", None),
-                "payload_schema": info.payload_schema
+                "payload_schema": info.payload_schema,
+                "status": str(info.status),
+                "segments_count": info.segments_count
             }
             
         except Exception as e:

@@ -1,0 +1,40 @@
+{% if system_info %}
+<div class="space-y-4 text-sm">
+    <div>
+        <h5 class="font-semibold text-white mb-2">Collection Info</h5>
+        <div class="space-y-1 text-gray-300">
+            <p><strong>Name:</strong> {{ system_info.vector_db.name or "Unknown" }}</p>
+            <p><strong>Points:</strong> {{ "{:,}".format(system_info.vector_db.points_count) if system_info.vector_db.points_count else "0" }}</p>
+            <p><strong>Vector Size:</strong> {{ system_info.vector_db.vector_size or "Unknown" }}</p>
+        </div>
+    </div>
+    
+    <div>
+        <h5 class="font-semibold text-white mb-2">Configuration</h5>
+        <div class="space-y-1 text-gray-300">
+            <p><strong>Chunking:</strong> {{ system_info.config.chunking_strategy }}</p>
+            <p><strong>Chunk Size:</strong> {{ system_info.ingestion.max_chunk_size_tokens }} tokens</p>
+            <p><strong>Vector Dimensions:</strong> {{ system_info.config.vector_dimensions }}</p>
+        </div>
+    </div>
+    
+    <div>
+        <h5 class="font-semibold text-white mb-2">RAG Engine</h5>
+        <div class="space-y-1 text-gray-300">
+            {% if system_info.rag_engine.reranker %}
+                <p><strong>Reranker:</strong> ✅ {{ system_info.rag_engine.reranker.model }}</p>
+            {% else %}
+                <p><strong>Reranker:</strong> ❌ Not available</p>
+            {% endif %}
+            
+            {% if system_info.rag_engine.deep_analyzer %}
+                <p><strong>Analyzer:</strong> ✅ {{ system_info.rag_engine.deep_analyzer.model }}</p>
+            {% else %}
+                <p><strong>Analyzer:</strong> ❌ Not available</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
+<p class="text-gray-400 text-sm">System information not available</p>
+{% endif %} 

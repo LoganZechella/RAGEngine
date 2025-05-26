@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RAGEngine Dashboard{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom progress bar animation */
+        .progress-bar {
+            transition: width 0.3s ease-in-out;
+        }
+        
+        /* Loading animation */
+        .htmx-request .loading {
+            display: inline-block;
+        }
+        .loading {
+            display: none;
+        }
+        
+        /* Fade in animation for new content */
+        .htmx-added {
+            opacity: 0;
+            animation: fadeIn 0.3s ease-in-out forwards;
+        }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+        
+        /* Score bar styling */
+        .score-bar {
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-800 shadow-lg">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold text-white mb-8">
+                    🔍 RAGEngine
+                </h1>
+                
+                <nav class="space-y-2">
+                    <a href="/" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-lg transition-colors">
+                        <span class="mr-3">📊</span>
+                        Dashboard
+                    </a>
+                    <a href="#search" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-lg transition-colors">
+                        <span class="mr-3">🔍</span>
+                        Search
+                    </a>
+                    <a href="#upload" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-lg transition-colors">
+                        <span class="mr-3">📁</span>
+                        Upload
+                    </a>
+                    <a href="#documents" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-lg transition-colors">
+                        <span class="mr-3">📚</span>
+                        Documents
+                    </a>
+                </nav>
+            </div>
+            
+            <!-- System Status -->
+            <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+                <div class="flex items-center space-x-2 text-sm">
+                    {% if api_status == "connected" %}
+                        <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span class="text-gray-400">Connected</span>
+                    {% else %}
+                        <div class="w-2 h-2 bg-red-400 rounded-full"></div>
+                        <span class="text-gray-400">Disconnected</span>
+                    {% endif %}
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Toast notification area -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script>
+        // Toast notification system
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const bgColor = type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600';
+            
+            toast.className = `${bgColor} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-x-full`;
+            toast.textContent = message;
+            
+            document.getElementById('toast-container').appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => toast.classList.remove('translate-x-full'), 100);
+            
+            // Auto remove
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // Handle HTMX errors
+        document.addEventListener('htmx:responseError', function(e) {
+            showToast('Request failed: ' + e.detail.xhr.statusText, 'error');
+        });
+
+        // Handle successful responses
+        document.addEventListener('htmx:afterSwap', function(e) {
+            if (e.detail.target.id === 'search-results' && e.detail.xhr.status === 200) {
+                showToast('Search completed', 'success');
+            }
+        });
+    </script>
+</body>
+</html> 

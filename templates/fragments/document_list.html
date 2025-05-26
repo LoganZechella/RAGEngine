@@ -1,0 +1,24 @@
+{% if documents %}
+<div class="space-y-3">
+    {% for path, metadata in documents.items() %}
+    <div class="bg-gray-700 rounded-lg p-3 flex items-center justify-between">
+        <div class="flex-1">
+            <h5 class="font-medium text-white">{{ path.split('/')[-1] }}</h5>
+            <div class="flex items-center space-x-4 text-sm text-gray-400">
+                <span>{{ metadata.last_processed|format_timestamp }}</span>
+                {% if metadata.processing_success %}
+                    <span class="text-green-400">✅ Success</span>
+                {% else %}
+                    <span class="text-red-400">❌ Failed</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="text-xs text-gray-500">
+            {{ "{:.1f}".format(metadata.size / 1024 / 1024) }}MB
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-center py-4">No documents processed yet</p>
+{% endif %} 

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-6">
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-white mb-2">Dashboard</h2>
+        <p class="text-gray-400">Monitor and control your RAG knowledge base</p>
+    </div>
+
+    {% if error %}
+        <div class="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded mb-6">
+            <strong>Error:</strong> {{ error }}
+        </div>
+    {% endif %}
+
+    <!-- System Overview Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- Collection Info -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-400 text-sm">Collection</p>
+                    <p class="text-2xl font-semibold text-white">
+                        {{ system_info.config.collection_name if system_info else "Unknown" }}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <span class="text-2xl">🗄️</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Count -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-400 text-sm">Documents</p>
+                    <p class="text-2xl font-semibold text-white">{{ doc_count }}</p>
+                </div>
+                <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                    <span class="text-2xl">📚</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vector Dimensions -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-400 text-sm">Vector Dimensions</p>
+                    <p class="text-2xl font-semibold text-white">
+                        {{ system_info.config.vector_dimensions if system_info else "Unknown" }}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
+                    <span class="text-2xl">📊</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Interface -->
+    <div class="bg-gray-800 rounded-lg p-6 mb-8">
+        <h3 class="text-xl font-semibold text-white mb-4">🔍 Search Knowledge Base</h3>
+        
+        <form hx-post="/search" hx-target="#search-results" hx-trigger="submit" class="space-y-4">
+            <div class="flex gap-4">
+                <input 
+                    type="text" 
+                    name="query" 
+                    placeholder="Enter your search query..." 
+                    class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                    required
+                >
+                
+                <select name="mode" class="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <option value="hybrid">Hybrid Search</option>
+                    <option value="dense">Dense Only</option>
+                    <option value="sparse">Sparse Only</option>
+                </select>
+                
+                <label class="flex items-center space-x-2 text-gray-300">
+                    <input type="checkbox" name="synthesize" checked class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                    <span>Synthesize</span>
+                </label>
+                
+                <button 
+                    type="submit" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                >
+                    <span class="loading">⏳</span>
+                    <span>Search</span>
+                </button>
+            </div>
+        </form>
+        
+        <div id="search-results" class="mt-6"></div>
+    </div>
+
+    <!-- File Upload -->
+    <div class="bg-gray-800 rounded-lg p-6 mb-8">
+        <h3 class="text-xl font-semibold text-white mb-4">📁 Upload Documents</h3>
+        
+        <form hx-post="/upload" hx-target="#upload-status" hx-encoding="multipart/form-data" class="space-y-4">
+            <div class="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center">
+                <input 
+                    type="file" 
+                    name="files" 
+                    multiple 
+                    accept=".pdf,.txt,.html"
+                    class="hidden" 
+                    id="file-input"
+                >
+                <label for="file-input" class="cursor-pointer">
+                    <div class="text-6xl mb-4">📎</div>
+                    <p class="text-gray-300 mb-2">Click to select files or drag and drop</p>
+                    <p class="text-gray-500 text-sm">Supports PDF, TXT, HTML files</p>
+                </label>
+            </div>
+            
+            <button 
+                type="submit" 
+                class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg transition-colors"
+            >
+                Upload Documents
+            </button>
+        </form>
+        
+        <div id="upload-status" class="mt-6"></div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- System Information -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="text-xl font-semibold text-white mb-4">⚙️ System Information</h3>
+            <button 
+                hx-get="/system-info" 
+                hx-target="#system-info-content" 
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors mb-4"
+            >
+                Refresh System Info
+            </button>
+            <div id="system-info-content"></div>
+        </div>
+
+        <!-- Collection Management -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="text-xl font-semibold text-white mb-4">🗄️ Collection Management</h3>
+            <div class="space-y-3">
+                <button 
+                    hx-post="/collection/clear" 
+                    hx-target="#collection-status"
+                    hx-confirm="Are you sure you want to clear all data from the collection?"
+                    class="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 rounded-lg transition-colors"
+                >
+                    Clear Collection
+                </button>
+                
+                <button 
+                    hx-post="/collection/recreate" 
+                    hx-target="#collection-status"
+                    hx-confirm="Are you sure you want to recreate the collection? This will delete all data."
+                    class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg transition-colors"
+                >
+                    Recreate Collection
+                </button>
+                
+                <div id="collection-status" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documents List -->
+    <div class="bg-gray-800 rounded-lg p-6 mt-8">
+        <h3 class="text-xl font-semibold text-white mb-4">📚 Processed Documents</h3>
+        <button 
+            hx-get="/documents" 
+            hx-target="#document-list" 
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors mb-4"
+        >
+            Load Documents
+        </button>
+        <div id="document-list"></div>
+    </div>
+</div>
+{% endblock %} 
