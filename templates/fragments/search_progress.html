@@ -1,0 +1,347 @@
+<div class="bg-gradient-to-r from-blue-900 to-purple-900 rounded-lg p-6" 
+     id="search-progress-container"
+     data-task-id="{{ task_id }}">
+    
+    <!-- Search Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h4 class="text-xl font-semibold text-white mb-1">🔍 Searching Knowledge Base</h4>
+            <p class="text-blue-200 text-sm">
+                Query: "<span class="font-medium">{{ query }}</span>" 
+                <span class="ml-2 px-2 py-1 bg-blue-700 rounded text-xs">{{ mode }}</span>
+                {% if synthesize %}<span class="ml-1 px-2 py-1 bg-purple-700 rounded text-xs">AI Analysis</span>{% endif %}
+            </p>
+        </div>
+        <button 
+            hx-post="/cancel-search/{{ task_id }}"
+            hx-target="#search-container"
+            hx-confirm="Are you sure you want to cancel this search?"
+            class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+            id="cancel-button"
+        >
+            Cancel
+        </button>
+    </div>
+
+    <!-- Overall Progress Bar -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-white font-medium" id="progress-phase">Initializing...</span>
+            <div class="flex items-center space-x-3 text-sm text-blue-200">
+                <span id="progress-percentage">0%</span>
+                <span id="time-elapsed">0.0s elapsed</span>
+                <span id="time-remaining" class="text-blue-300"></span>
+            </div>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-3 relative overflow-hidden">
+            <div 
+                class="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500 ease-out" 
+                style="width: 0%"
+                id="main-progress-bar"
+            ></div>
+            <!-- Animated pulse overlay -->
+            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 transform -skew-x-12 animate-pulse"></div>
+        </div>
+    </div>
+
+    <!-- Phase Indicators -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <!-- Phase 1: Initialize -->
+        <div class="phase-indicator bg-gray-800 rounded-lg p-3 transition-all duration-300" data-phase="1">
+            <div class="flex items-center space-x-2">
+                <div class="phase-icon w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs">1</div>
+                <span class="text-gray-300 text-sm">Initialize</span>
+            </div>
+        </div>
+
+        <!-- Phase 2: Embedding -->
+        <div class="phase-indicator bg-gray-800 rounded-lg p-3 transition-all duration-300" data-phase="2">
+            <div class="flex items-center space-x-2">
+                <div class="phase-icon w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs">2</div>
+                <span class="text-gray-300 text-sm">Embedding</span>
+            </div>
+        </div>
+
+        <!-- Phase 3: Vector Search -->
+        <div class="phase-indicator bg-gray-800 rounded-lg p-3 transition-all duration-300" data-phase="3">
+            <div class="flex items-center space-x-2">
+                <div class="phase-icon w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs">3</div>
+                <span class="text-gray-300 text-sm">Vector Search</span>
+            </div>
+        </div>
+
+        <!-- Phase 4: Analysis -->
+        <div class="phase-indicator bg-gray-800 rounded-lg p-3 transition-all duration-300" data-phase="4">
+            <div class="flex items-center space-x-2">
+                <div class="phase-icon w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs">4</div>
+                <span class="text-gray-300 text-sm">Analysis</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Status -->
+    <div class="bg-black bg-opacity-30 rounded-lg p-4">
+        <div class="flex items-start space-x-3">
+            <div class="mt-1">
+                <div class="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" id="spinner"></div>
+            </div>
+            <div class="flex-1">
+                <p class="text-white font-medium mb-1" id="status-message">Setting up search parameters...</p>
+                <div class="text-blue-200 text-sm space-y-1" id="detailed-status">
+                    <p>⏳ Preparing search engine...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Display -->
+        <div id="error-container" class="mt-4 hidden">
+            <div class="bg-red-900 bg-opacity-50 rounded-lg p-3">
+                <h5 class="text-red-200 font-medium mb-2">⚠️ Issues Encountered</h5>
+                <div id="error-list" class="text-red-200 text-sm space-y-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-load results when complete -->
+    <div 
+        id="auto-load-results"
+        hx-get="/search-results/{{ task_id }}"
+        hx-target="#search-container"
+        hx-swap="innerHTML"
+        style="display: none;"
+    ></div>
+</div>
+
+<script>
+(function() {
+    const progressContainer = document.getElementById('search-progress-container');
+    if (!progressContainer) return;
+
+    const taskId = progressContainer.getAttribute('data-task-id');
+    if (!taskId) return;
+
+    // Create EventSource connection manually
+    const eventSource = new EventSource(`/search-progress/${taskId}`);
+    
+    eventSource.onopen = function(e) {
+        console.log('SSE connection opened for task:', taskId);
+    };
+    
+    eventSource.onmessage = function(e) {
+        console.log('SSE message received:', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('Parsed SSE data:', data);
+            updateSearchProgress(data);
+        } catch (error) {
+            console.error('Error parsing SSE data:', error, 'Raw data:', e.data);
+        }
+    };
+    
+    eventSource.addEventListener('progress', function(e) {
+        console.log('Progress event received:', e.data);
+        try {
+            const data = JSON.parse(e.data);
+            console.log('Progress data:', data);
+            updateSearchProgress(data);
+        } catch (error) {
+            console.error('Error parsing progress data:', error, 'Raw data:', e.data);
+        }
+    });
+    
+    eventSource.addEventListener('complete', function(e) {
+        try {
+            const data = JSON.parse(e.data);
+            updateSearchProgress(data);
+            
+            // Auto-load results when complete
+            if (data.status === 'completed') {
+                setTimeout(() => {
+                    const autoLoad = document.getElementById('auto-load-results');
+                    if (autoLoad) {
+                        htmx.trigger(autoLoad, 'click');
+                    }
+                }, 1000);
+            }
+            
+            // Close the EventSource
+            eventSource.close();
+        } catch (error) {
+            console.error('Error handling completion:', error);
+        }
+    });
+    
+    eventSource.onerror = function(e) {
+        console.error('SSE connection error:', e);
+        // Don't close immediately, let it retry
+    };
+    
+    // Clean up on page unload
+    window.addEventListener('beforeunload', function() {
+        if (eventSource) {
+            eventSource.close();
+        }
+    });
+
+    function updateSearchProgress(data) {
+        console.log('Updating search progress with data:', data);
+        
+        // Update main progress bar
+        const progressBar = document.getElementById('main-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = data.progress + '%';
+            console.log('Updated progress bar to:', data.progress + '%');
+        }
+
+        // Update percentage display
+        const progressPercentage = document.getElementById('progress-percentage');
+        if (progressPercentage) {
+            progressPercentage.textContent = data.progress + '%';
+        }
+
+        // Update phase display
+        const progressPhase = document.getElementById('progress-phase');
+        if (progressPhase) {
+            progressPhase.textContent = data.phase || 'Processing...';
+        }
+
+        // Update timing information
+        const timeElapsed = document.getElementById('time-elapsed');
+        if (timeElapsed && data.elapsed_time) {
+            timeElapsed.textContent = data.elapsed_time + 's elapsed';
+        }
+
+        const timeRemaining = document.getElementById('time-remaining');
+        if (timeRemaining && data.estimated_remaining) {
+            if (data.estimated_remaining > 0) {
+                timeRemaining.textContent = '~' + data.estimated_remaining + 's remaining';
+                timeRemaining.classList.remove('hidden');
+            } else {
+                timeRemaining.classList.add('hidden');
+            }
+        }
+
+        // Update status message
+        const statusMessage = document.getElementById('status-message');
+        if (statusMessage) {
+            statusMessage.textContent = data.message || 'Processing...';
+        }
+
+        // Update phase indicators
+        updatePhaseIndicators(data.current_phase);
+
+        // Update detailed status
+        updateDetailedStatus(data);
+
+        // Handle errors
+        if (data.errors && data.errors.length > 0) {
+            displayErrors(data.errors);
+        }
+
+        // Handle completion
+        if (data.status === 'completed') {
+            handleSearchComplete(data);
+        } else if (data.status === 'error') {
+            handleSearchError(data);
+        }
+    }
+
+    function updatePhaseIndicators(currentPhase) {
+        const indicators = document.querySelectorAll('.phase-indicator');
+        indicators.forEach((indicator, index) => {
+            const phaseNum = index + 1;
+            const icon = indicator.querySelector('.phase-icon');
+            
+            if (phaseNum < currentPhase) {
+                // Completed phase
+                indicator.classList.add('bg-green-800');
+                indicator.classList.remove('bg-gray-800', 'bg-blue-800');
+                icon.classList.add('bg-green-500');
+                icon.classList.remove('bg-gray-600', 'bg-blue-500');
+                icon.textContent = '✓';
+            } else if (phaseNum === currentPhase) {
+                // Current phase
+                indicator.classList.add('bg-blue-800');
+                indicator.classList.remove('bg-gray-800', 'bg-green-800');
+                icon.classList.add('bg-blue-500');
+                icon.classList.remove('bg-gray-600', 'bg-green-500');
+                icon.textContent = phaseNum;
+            } else {
+                // Future phase
+                indicator.classList.add('bg-gray-800');
+                indicator.classList.remove('bg-blue-800', 'bg-green-800');
+                icon.classList.add('bg-gray-600');
+                icon.classList.remove('bg-blue-500', 'bg-green-500');
+                icon.textContent = phaseNum;
+            }
+        });
+    }
+
+    function updateDetailedStatus(data) {
+        const detailedStatus = document.getElementById('detailed-status');
+        if (!detailedStatus) return;
+
+        const statusMessages = [
+            `🔍 Query: "${data.query || 'Unknown'}"`,
+            `📊 Progress: ${data.progress || 0}% (Phase ${data.current_phase || 1}/${data.total_phases || 8})`,
+            `⏱️ Elapsed: ${data.elapsed_time || 0}s`
+        ];
+
+        if (data.estimated_remaining > 0) {
+            statusMessages.push(`⏳ Estimated: ${data.estimated_remaining}s remaining`);
+        }
+
+        detailedStatus.innerHTML = statusMessages.map(msg => `<p>${msg}</p>`).join('');
+    }
+
+    function displayErrors(errors) {
+        const errorContainer = document.getElementById('error-container');
+        const errorList = document.getElementById('error-list');
+        
+        if (errorContainer && errorList && errors.length > 0) {
+            errorContainer.classList.remove('hidden');
+            errorList.innerHTML = errors.map(error => `<p>• ${error}</p>`).join('');
+        }
+    }
+
+    function handleSearchComplete(data) {
+        const spinner = document.getElementById('spinner');
+        if (spinner) {
+            spinner.classList.add('hidden');
+        }
+
+        const cancelButton = document.getElementById('cancel-button');
+        if (cancelButton) {
+            cancelButton.classList.add('hidden');
+        }
+
+        // Show completion checkmark
+        const progressPhase = document.getElementById('progress-phase');
+        if (progressPhase) {
+            progressPhase.innerHTML = '✅ Search Completed';
+        }
+    }
+
+    function handleSearchError(data) {
+        const progressBar = document.getElementById('main-progress-bar');
+        if (progressBar) {
+            progressBar.classList.add('bg-red-500');
+            progressBar.classList.remove('bg-gradient-to-r', 'from-blue-500', 'to-purple-500');
+        }
+
+        const progressPhase = document.getElementById('progress-phase');
+        if (progressPhase) {
+            progressPhase.innerHTML = '❌ Search Failed';
+        }
+    }
+})();
+
+// Quick search function
+function quickSearch(query) {
+    const searchInput = document.getElementById('search-query');
+    if (searchInput) {
+        searchInput.value = query;
+        document.getElementById('search-form').dispatchEvent(new Event('submit'));
+    }
+}
+</script> 

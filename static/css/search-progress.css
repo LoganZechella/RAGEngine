@@ -1,0 +1,125 @@
+/* Search Progress Animations */
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes pulseGlow {
+    0%, 100% { 
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); 
+    }
+    50% { 
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); 
+    }
+}
+
+@keyframes progressShimmer {
+    0% { 
+        transform: translateX(-100%); 
+    }
+    100% { 
+        transform: translateX(100%); 
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-pulseGlow {
+    animation: pulseGlow 2s infinite;
+}
+
+/* Progress bar enhancements */
+.progress-bar-shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: progressShimmer 2s infinite;
+}
+
+/* Phase indicator transitions */
+.phase-indicator {
+    transition: all 0.3s ease-in-out;
+}
+
+.phase-indicator:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.phase-icon {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Search container enhancements */
+.search-container {
+    transition: all 0.3s ease-in-out;
+}
+
+.search-active {
+    border-left: 4px solid #3b82f6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .phase-indicator {
+        padding: 0.5rem;
+    }
+    
+    .phase-indicator span {
+        font-size: 0.75rem;
+    }
+    
+    .progress-bar {
+        height: 0.5rem;
+    }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+    .search-progress-container {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    }
+    
+    .phase-indicator {
+        border: 1px solid rgba(71, 85, 105, 0.3);
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    .animate-fadeIn,
+    .progress-bar-shimmer::after,
+    .phase-indicator {
+        animation: none;
+        transition: none;
+    }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    .progress-bar {
+        border: 2px solid #ffffff;
+    }
+    
+    .phase-indicator {
+        border: 2px solid #ffffff;
+    }
+} 

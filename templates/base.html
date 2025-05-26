@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    
+    <!-- Add search progress CSS -->
+    <link rel="stylesheet" href="/static/css/search-progress.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -54,6 +57,21 @@
             font-family: monospace;
             font-size: 0.875rem;
             color: #10b981;
+        }
+        
+        /* Enhanced animations */
+        .htmx-request .search-icon {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .search-active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
+            animation: pulseGlow 2s infinite;
         }
     </style>
 </head>
