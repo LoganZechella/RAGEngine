@@ -10,8 +10,14 @@ from dotenv import load_dotenv
 from loguru import logger
 
 def main():
-    # Load environment
-    load_dotenv()
+    # Add backend directory to Python path
+    backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+    
+    # Load environment from backend directory
+    env_path = os.path.join(backend_dir, '.env')
+    load_dotenv(env_path)
     
     # Configure logging
     logger.add("ragengine_web.log", rotation="10 MB", level="INFO")
@@ -23,7 +29,7 @@ def main():
     if missing_vars:
         logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
         print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
-        print("Please check your .env file.")
+        print("Please check your .env file in the backend directory.")
         sys.exit(1)
     
     # Optional but recommended

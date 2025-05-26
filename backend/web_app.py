@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File, Form, H
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.knowledge_base_api import KnowledgeBaseAPI
 from dotenv import load_dotenv
@@ -35,7 +36,23 @@ class EventSourceResponse(StreamingResponse):
         )
 
 # Initialize FastAPI app
-app = FastAPI(title="RAGEngine Web Interface")
+app = FastAPI(title="RAGEngine API")
+
+# Configure CORS for SvelteKit frontend
+origins = [
+    "http://localhost:5173",      # SvelteKit dev server
+    "http://localhost:4173",      # SvelteKit preview
+    "http://localhost:3000",      # Alternative dev port
+    "https://your-domain.com",    # Production frontend
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -619,34 +636,30 @@ async def progress_stream(task_id: str):
     return EventSourceResponse(event_generator())
 
 @app.get("/system-info")
-async def system_info(request: Request):
-    """Get system information fragment."""
+async def system_info():
+    """Get system information as JSON."""
     if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
+        raise HTTPException(status_code=503, detail="API not available")
     
     try:
         info = kb_api.get_system_info()
-        return templates.TemplateResponse("fragments/system_info.html", {
-            "request": request,
-            "system_info": info
-        })
+        return info
     except Exception as e:
-        return HTMLResponse(f'<div class="text-red-500">System info error: {str(e)}</div>')
+        logger.error(f"System info error: {e}")
+        raise HTTPException(status_code=500, detail=f"System info error: {str(e)}")
 
 @app.get("/documents")
-async def document_list(request: Request):
-    """Get processed documents list."""
+async def document_list():
+    """Get processed documents list as JSON."""
     if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
+        raise HTTPException(status_code=503, detail="API not available")
     
     try:
         docs = kb_api.get_processed_documents()
-        return templates.TemplateResponse("fragments/document_list.html", {
-            "request": request,
-            "documents": docs
-        })
+        return docs
     except Exception as e:
-        return HTMLResponse(f'<div class="text-red-500">Document list error: {str(e)}</div>')
+        logger.error(f"Document list error: {e}")
+        raise HTTPException(status_code=500, detail=f"Document list error: {str(e)}")
 
 @app.post("/collection/{action}")
 async def collection_action(request: Request, action: str):
