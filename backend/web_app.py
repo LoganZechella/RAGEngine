@@ -159,7 +159,7 @@ async def search_with_progress(
     mode: str = Form("hybrid"), 
     synthesize: bool = Form(True)
 ):
-    """Initiate search with progress tracking."""
+    """Initiate search with progress tracking (HTMX version - returns HTML)."""
     if not kb_api:
         return HTMLResponse('<div class="text-red-500">API not available</div>')
     
@@ -192,7 +192,7 @@ async def search_with_progress(
     # Start background search
     background_tasks.add_task(perform_search_with_progress, task_id, query, mode, synthesize)
     
-    # Return progress UI
+    # Return progress UI for HTMX
     return templates.TemplateResponse("fragments/search_progress.html", {
         "request": request,
         "task_id": task_id,
@@ -371,11 +371,17 @@ async def update_search_progress(task_id: str, phase: int, progress: int, messag
     if task_id in search_events:
         try:
             await search_events[task_id].put("update")
-            logger.debug(f"Progress update sent for task {task_id}: {progress}% - {message}")
+            logger.info(f"Progress update queued for task {task_id}: {progress}% - {message}")
         except Exception as e:
             logger.error(f"Failed to notify SSE listeners for task {task_id}: {e}")
     else:
-        logger.warning(f"No event queue found for task {task_id}")
+        logger.warning(f"No event queue found for task {task_id} - creating one")
+        search_events[task_id] = asyncio.Queue()
+        try:
+            await search_events[task_id].put("update")
+            logger.info(f"Created queue and sent update for task {task_id}: {progress}% - {message}")
+        except Exception as e:
+            logger.error(f"Failed to create queue and notify for task {task_id}: {e}")
 
 def get_phase_name(phase: int) -> str:
     """Get human-readable phase name."""
@@ -396,12 +402,27 @@ async def search_progress_stream(task_id: str):
     """Server-Sent Events endpoint for search progress."""
     async def event_generator():
         try:
+            # Validate task ID
+            if not task_id or task_id == "null" or task_id == "undefined":
+                logger.warning(f"Invalid task ID received: {task_id}")
+                yield f"data: {{\"error\": \"Invalid task ID: {task_id}\"}}\n\n"
+                return
+            
+            # Check if task exists
+            if task_id not in search_tasks:
+                logger.warning(f"Task {task_id} not found")
+                yield f"data: {{\"error\": \"Task not found: {task_id}\"}}\n\n"
+                return
+            
+            logger.info(f"SSE connection established for task {task_id}")
+            
             # Send initial connection event
-            yield "event: connected\ndata: {\"status\": \"connected\"}\n\n"
+            yield f"data: {{\"status\": \"connected\", \"task_id\": \"{task_id}\"}}\n\n"
             
             # Create event queue if it doesn't exist
             if task_id not in search_events:
                 search_events[task_id] = asyncio.Queue()
+                logger.info(f"Created event queue for task {task_id}")
             
             event_queue = search_events[task_id]
             
@@ -409,33 +430,45 @@ async def search_progress_stream(task_id: str):
             if task_id in search_tasks:
                 task = search_tasks[task_id]
                 data = prepare_progress_data(task)
-                yield f"event: progress\ndata: {json.dumps(data)}\n\n"
+                yield f"data: {json.dumps(data)}\n\n"
+                logger.info(f"Sent initial progress for task {task_id}: {data['progress']}%")
             
             # Listen for updates with polling fallback
             last_progress = -1
+            last_message = ""
+            iteration = 0
+            
             while task_id in search_tasks:
                 try:
+                    iteration += 1
+                    
                     # Try to get event notification with short timeout
                     try:
                         await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        logger.debug(f"Received queue notification for task {task_id}")
                     except asyncio.TimeoutError:
-                        pass  # Continue with polling
+                        # Continue with polling - this is normal
+                        pass
                     
                     if task_id not in search_tasks:
+                        logger.info(f"Task {task_id} no longer exists, ending SSE stream")
                         break
                         
                     task = search_tasks[task_id]
                     
-                    # Only send update if progress changed
-                    if task["progress"] != last_progress:
+                    # Send update if progress or message changed
+                    if task["progress"] != last_progress or task["message"] != last_message:
                         data = prepare_progress_data(task)
-                        yield f"event: progress\ndata: {json.dumps(data)}\n\n"
+                        yield f"data: {json.dumps(data)}\n\n"
+                        logger.info(f"SSE update sent for task {task_id}: {data['progress']}% - {data['message']}")
                         last_progress = task["progress"]
+                        last_message = task["message"]
                     
                     # Check if task is complete
                     if task["status"] in ["completed", "error", "cancelled"]:
                         data = prepare_progress_data(task)
-                        yield f"event: complete\ndata: {json.dumps(data)}\n\n"
+                        yield f"data: {json.dumps(data)}\n\n"
+                        logger.info(f"Task {task_id} completed, ending SSE stream")
                         break
                         
                     # Small delay to prevent excessive polling
@@ -447,11 +480,12 @@ async def search_progress_stream(task_id: str):
                     
         except Exception as e:
             logger.error(f"SSE stream error for task {task_id}: {e}")
-            yield f"event: error\ndata: {{\"error\": \"Stream error: {str(e)}\"}}\n\n"
+            yield f"data: {{\"error\": \"Stream error: {str(e)}\"}}\n\n"
         finally:
             # Clean up event queue
             if task_id in search_events:
                 del search_events[task_id]
+                logger.info(f"Cleaned up event queue for task {task_id}")
     
     return EventSourceResponse(event_generator())
 
@@ -488,7 +522,7 @@ async def cancel_search(task_id: str):
 
 @app.get("/search-results/{task_id}")
 async def get_search_results(request: Request, task_id: str):
-    """Get the final search results."""
+    """Get the final search results (HTMX version - returns HTML)."""
     if task_id not in search_tasks:
         return HTMLResponse('<div class="text-red-500">Search not found</div>')
     
@@ -511,7 +545,79 @@ async def get_search_results(request: Request, task_id: str):
         "mode": mode
     })
 
+@app.get("/api/search-results/{task_id}")
+async def api_get_search_results(task_id: str):
+    """Get the final search results (SvelteKit version - returns JSON)."""
+    if task_id not in search_tasks:
+        raise HTTPException(status_code=404, detail="Search not found")
+    
+    task = search_tasks[task_id]
+    if task["status"] != "completed" or not task.get("results"):
+        raise HTTPException(status_code=202, detail="Results not ready")
+    
+    # Get results without cleaning up task (let it expire naturally)
+    results = task["results"]
+    query = task["query"]
+    mode = task["mode"]
+    
+    return {
+        "results": results,
+        "query": query,
+        "mode": mode,
+        "task_id": task_id,
+        "status": "completed"
+    }
+
 # JSON API Endpoints for SvelteKit Frontend
+
+@app.post("/api/search-with-progress")
+async def api_search_with_progress(
+    background_tasks: BackgroundTasks,
+    query: str = Form(...), 
+    mode: str = Form("hybrid"), 
+    synthesize: bool = Form(True)
+):
+    """Initiate search with progress tracking (SvelteKit version - returns JSON)."""
+    if not kb_api:
+        raise HTTPException(status_code=503, detail="API not available")
+    
+    # Generate unique task ID
+    task_id = str(uuid.uuid4())
+    
+    # Initialize search tracking
+    search_tasks[task_id] = {
+        "status": "initializing",
+        "progress": 0,
+        "phase": "Initializing",
+        "message": "Setting up search parameters...",
+        "query": query,
+        "mode": mode,
+        "synthesize": synthesize,
+        "start_time": datetime.now(),
+        "estimated_completion": None,
+        "current_phase": 1,
+        "total_phases": 8 if mode == "hybrid" and synthesize else (6 if synthesize else 4),
+        "errors": [],
+        "cancelled": False,
+        "results": None
+    }
+    
+    # Create event queue for this task
+    search_events[task_id] = asyncio.Queue()
+    
+    logger.info(f"Created search task {task_id} for query: '{query}' mode: {mode} (SvelteKit)")
+    
+    # Start background search
+    background_tasks.add_task(perform_search_with_progress, task_id, query, mode, synthesize)
+    
+    # Return JSON response with task ID
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "query": query,
+        "mode": mode,
+        "synthesize": synthesize
+    }
 
 @app.post("/api/search")
 async def api_search(

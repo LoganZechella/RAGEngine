@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import type { SearchMode, SearchResult } from './types/search';
 
 // Type definitions matching actual API response structure
 interface RequestOptions extends RequestInit {
@@ -81,14 +82,7 @@ interface Document {
   [key: string]: any;
 }
 
-interface SearchResult {
-  contexts: any[];
-  num_results: number;
-  synthesis?: string;
-  [key: string]: any;
-}
 
-type SearchMode = 'hybrid' | 'dense' | 'sparse';
 
 class RAGEngineAPI {
   private baseURL: string;
@@ -215,6 +209,50 @@ class RAGEngineAPI {
       }
       return response.text(); // Return HTML for now, will be JSON later
     });
+  }
+
+  // Enhanced search methods for progress tracking
+  async startSearchWithProgress(query: string, mode: SearchMode = 'hybrid', synthesize: boolean = true): Promise<string> {
+    const formData = new FormData();
+    formData.append('query', query);
+    formData.append('mode', mode);
+    formData.append('synthesize', synthesize.toString());
+
+    const response = await fetch(`${this.baseURL}/api/search-with-progress`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.task_id) {
+      throw new Error('No task ID returned from server');
+    }
+    
+    return result.task_id;
+  }
+
+  createSearchProgressSSE(taskId: string): EventSource | null {
+    if (!browser) return null;
+    return new EventSource(`${this.baseURL}/search-progress/${taskId}`);
+  }
+
+  async getSearchResults(taskId: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/api/search-results/${taskId}`);
+    if (!response.ok) {
+      if (response.status === 202) {
+        throw new Error('Results not ready yet');
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async cancelSearch(taskId: string): Promise<void> {
+    await fetch(`${this.baseURL}/cancel-search/${taskId}`, { method: 'POST' });
   }
 }
 
