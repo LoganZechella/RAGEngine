@@ -19,7 +19,7 @@ from loguru import logger
 # Load environment
 load_dotenv()
 
-from src.api.knowledge_base_api import KnowledgeBaseAPI
+from backend.src.api.knowledge_base_api import KnowledgeBaseAPI
 
 def display_enhanced_synthesis(synthesis):
     """Display synthesized knowledge with enhanced formatting."""

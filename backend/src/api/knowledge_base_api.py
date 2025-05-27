@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
-from src.ingestion.knowledge_ingestion import KnowledgeIngestion
-from src.ingestion.embedding_generator import EmbeddingGenerator
-from src.ingestion.vector_db_manager import VectorDBManager
-from src.rag.rag_engine import RAGEngine
+from backend.src.ingestion.knowledge_ingestion import KnowledgeIngestion
+from backend.src.ingestion.embedding_generator import EmbeddingGenerator
+from backend.src.ingestion.vector_db_manager import VectorDBManager
+from backend.src.rag.rag_engine import RAGEngine
 
 class KnowledgeBaseAPI:
     """Simple API interface for the knowledge base."""

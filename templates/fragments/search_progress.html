@@ -150,24 +150,32 @@
     });
     
     eventSource.addEventListener('complete', function(e) {
+        console.log('Complete event received:', e.data);
         try {
             const data = JSON.parse(e.data);
+            console.log('Complete data:', data);
             updateSearchProgress(data);
             
             // Auto-load results when complete
             if (data.status === 'completed') {
+                console.log('Search completed, auto-loading results...');
                 setTimeout(() => {
                     const autoLoad = document.getElementById('auto-load-results');
                     if (autoLoad) {
+                        console.log('Triggering auto-load...');
                         htmx.trigger(autoLoad, 'click');
+                    } else {
+                        console.error('Auto-load element not found');
                     }
-                }, 1000);
+                }, 500);  // Reduced delay for faster response
             }
             
-            // Close the EventSource
+            // Close the EventSource immediately on completion
+            console.log('Closing EventSource for completed task');
             eventSource.close();
         } catch (error) {
             console.error('Error handling completion:', error);
+            eventSource.close();
         }
     });
     

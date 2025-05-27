@@ -11,8 +11,8 @@ from typing import List, Dict, Any, Tuple, Optional
 import os
 from loguru import logger
 
-from src.models.data_models import ParsedDocument, StructuredTable, DocumentType
-from src.ingestion.content_filter import ScientificContentFilter
+from backend.src.models.data_models import ParsedDocument, StructuredTable, DocumentType
+from backend.src.ingestion.content_filter import ScientificContentFilter
 
 
 class PdfParser:

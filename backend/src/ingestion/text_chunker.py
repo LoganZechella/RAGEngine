@@ -23,8 +23,8 @@ try:
 except LookupError:
     nltk.download('punkt_tab', quiet=True)
 
-from src.models.data_models import ParsedDocument, TextChunk, ChunkType
-from src.ingestion.content_filter import ScientificContentFilter
+from backend.src.models.data_models import ParsedDocument, TextChunk, ChunkType
+from backend.src.ingestion.content_filter import ScientificContentFilter
 
 
 class ChunkingStrategy(str, Enum):

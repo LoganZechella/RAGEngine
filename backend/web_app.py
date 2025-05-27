@@ -333,6 +333,9 @@ async def perform_search_with_progress(task_id: str, query: str, mode: str, synt
             except Exception as e:
                 logger.error(f"Failed to notify completion for task {task_id}: {e}")
         
+        # Schedule cleanup after a delay to allow results to be retrieved
+        asyncio.create_task(cleanup_completed_task(task_id, delay=30))
+        
     except Exception as e:
         logger.error(f"Search task {task_id} failed: {e}")
         task["status"] = "error"
@@ -345,6 +348,18 @@ async def perform_search_with_progress(task_id: str, query: str, mode: str, synt
                 await search_events[task_id].put("error")
             except Exception as e:
                 logger.error(f"Failed to notify error for task {task_id}: {e}")
+        
+        # Schedule cleanup for failed tasks too
+        asyncio.create_task(cleanup_completed_task(task_id, delay=10))
+
+async def cleanup_completed_task(task_id: str, delay: int = 30):
+    """Clean up completed task after a delay."""
+    await asyncio.sleep(delay)
+    if task_id in search_tasks:
+        logger.info(f"Cleaning up completed task {task_id} after {delay}s delay")
+        del search_tasks[task_id]
+    if task_id in search_events:
+        del search_events[task_id]
 
 async def update_search_progress(task_id: str, phase: int, progress: int, message: str):
     """Update search progress for a task."""
@@ -432,13 +447,25 @@ async def search_progress_stream(task_id: str):
                 data = prepare_progress_data(task)
                 yield f"data: {json.dumps(data)}\n\n"
                 logger.info(f"Sent initial progress for task {task_id}: {data['progress']}%")
+                
+                # If task is already completed, send completion event and close SSE
+                if task["status"] in ["completed", "error", "cancelled"]:
+                    logger.info(f"Task {task_id} already completed, sending completion event")
+                    yield f"event: complete\ndata: {json.dumps(data)}\n\n"
+                    
+                    # Only clean up event queue, keep task for results retrieval
+                    if task_id in search_events:
+                        del search_events[task_id]
+                        logger.info(f"Cleaned up event queue for completed task {task_id}")
+                    return
             
             # Listen for updates with polling fallback
             last_progress = -1
             last_message = ""
+            max_iterations = 200  # Prevent infinite loops (200 * 0.5s = 100s max)
             iteration = 0
             
-            while task_id in search_tasks:
+            while task_id in search_tasks and iteration < max_iterations:
                 try:
                     iteration += 1
                     
@@ -467,8 +494,13 @@ async def search_progress_stream(task_id: str):
                     # Check if task is complete
                     if task["status"] in ["completed", "error", "cancelled"]:
                         data = prepare_progress_data(task)
-                        yield f"data: {json.dumps(data)}\n\n"
-                        logger.info(f"Task {task_id} completed, ending SSE stream")
+                        yield f"event: complete\ndata: {json.dumps(data)}\n\n"
+                        logger.info(f"Task {task_id} completed, sending completion event and closing SSE")
+                        
+                        # Only clean up event queue, keep task for results retrieval
+                        if task_id in search_events:
+                            del search_events[task_id]
+                            logger.info(f"Cleaned up event queue for task {task_id}")
                         break
                         
                     # Small delay to prevent excessive polling
@@ -477,15 +509,21 @@ async def search_progress_stream(task_id: str):
                 except Exception as inner_e:
                     logger.error(f"Inner SSE loop error for task {task_id}: {inner_e}")
                     break
+            
+            # Final cleanup check - only event queue
+            if iteration >= max_iterations:
+                logger.warning(f"Task {task_id} reached max iterations, cleaning up event queue")
+                if task_id in search_events:
+                    del search_events[task_id]
                     
         except Exception as e:
             logger.error(f"SSE stream error for task {task_id}: {e}")
             yield f"data: {{\"error\": \"Stream error: {str(e)}\"}}\n\n"
         finally:
-            # Clean up event queue
+            # Clean up event queue only
             if task_id in search_events:
                 del search_events[task_id]
-                logger.info(f"Cleaned up event queue for task {task_id}")
+                logger.info(f"Final cleanup of event queue for task {task_id}")
     
     return EventSourceResponse(event_generator())
 
@@ -524,19 +562,22 @@ async def cancel_search(task_id: str):
 async def get_search_results(request: Request, task_id: str):
     """Get the final search results (HTMX version - returns HTML)."""
     if task_id not in search_tasks:
+        logger.warning(f"Search results requested for non-existent task: {task_id}")
         return HTMLResponse('<div class="text-red-500">Search not found</div>')
     
     task = search_tasks[task_id]
     if task["status"] != "completed" or not task.get("results"):
+        logger.warning(f"Results requested for incomplete task {task_id}: status={task['status']}, has_results={task.get('results') is not None}")
         return HTMLResponse('<div class="text-yellow-500">Results not ready</div>')
     
-    # Clean up task after retrieving results
+    # Extract results before cleanup
     results = task["results"]
     query = task["query"]
     mode = task["mode"]
     
-    # Remove task from memory
+    # Remove task from memory after successful retrieval
     del search_tasks[task_id]
+    logger.info(f"Successfully retrieved and cleaned up task {task_id} - found {results.get('num_results', 0)} results")
     
     return templates.TemplateResponse("fragments/search_results.html", {
         "request": request,
@@ -802,30 +843,36 @@ async def progress_stream(task_id: str):
     return EventSourceResponse(event_generator())
 
 @app.get("/system-info")
-async def system_info():
-    """Get system information as JSON."""
+async def system_info(request: Request):
+    """Get system information as rendered HTML fragment."""
     if not kb_api:
-        raise HTTPException(status_code=503, detail="API not available")
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     try:
         info = kb_api.get_system_info()
-        return info
+        return templates.TemplateResponse("fragments/system_info.html", {
+            "request": request,
+            "system_info": info
+        })
     except Exception as e:
         logger.error(f"System info error: {e}")
-        raise HTTPException(status_code=500, detail=f"System info error: {str(e)}")
+        return HTMLResponse(f'<div class="text-red-500">System info error: {str(e)}</div>')
 
 @app.get("/documents")
-async def document_list():
-    """Get processed documents list as JSON."""
+async def document_list(request: Request):
+    """Get processed documents list as rendered HTML fragment."""
     if not kb_api:
-        raise HTTPException(status_code=503, detail="API not available")
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     try:
         docs = kb_api.get_processed_documents()
-        return docs
+        return templates.TemplateResponse("fragments/document_list.html", {
+            "request": request,
+            "documents": docs
+        })
     except Exception as e:
         logger.error(f"Document list error: {e}")
-        raise HTTPException(status_code=500, detail=f"Document list error: {str(e)}")
+        return HTMLResponse(f'<div class="text-red-500">Document list error: {str(e)}</div>')
 
 @app.post("/collection/{action}")
 async def collection_action(request: Request, action: str):
@@ -866,9 +913,28 @@ async def debug_search_tasks():
             "status": task["status"],
             "progress": task["progress"],
             "phase": task.get("phase", "Unknown"),
-            "message": task["message"]
+            "message": task["message"],
+            "start_time": task["start_time"].isoformat(),
+            "elapsed_seconds": (datetime.now() - task["start_time"]).total_seconds()
         } for task_id, task in search_tasks.items()},
         "event_queues": list(search_events.keys())
+    }
+
+@app.post("/debug/clear-tasks")
+async def clear_all_tasks():
+    """Debug endpoint to clear all stuck tasks."""
+    cleared_tasks = list(search_tasks.keys())
+    cleared_events = list(search_events.keys())
+    
+    search_tasks.clear()
+    search_events.clear()
+    
+    logger.info(f"Cleared {len(cleared_tasks)} tasks and {len(cleared_events)} event queues")
+    
+    return {
+        "message": f"Cleared {len(cleared_tasks)} tasks and {len(cleared_events)} event queues",
+        "cleared_tasks": cleared_tasks,
+        "cleared_events": cleared_events
     }
 
 if __name__ == "__main__":

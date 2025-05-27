@@ -14,7 +14,7 @@ import os
 
 from openai import OpenAI, RateLimitError, APIError, APITimeoutError
 
-from src.models.data_models import TextChunk, EmbeddedChunk
+from backend.src.models.data_models import TextChunk, EmbeddedChunk
 
 
 class EmbeddingGenerator:

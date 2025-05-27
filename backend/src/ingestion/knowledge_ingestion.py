@@ -2,12 +2,12 @@ from typing import List, Dict, Any, Optional
 from loguru import logger
 import os
 
-from src.ingestion.document_source_manager import DocumentSourceManager
-from src.ingestion.pdf_parser import PdfParser
-from src.ingestion.text_chunker import TextChunker
-from src.ingestion.embedding_generator import EmbeddingGenerator
-from src.ingestion.vector_db_manager import VectorDBManager
-from src.models.data_models import DocumentType
+from backend.src.ingestion.document_source_manager import DocumentSourceManager
+from backend.src.ingestion.pdf_parser import PdfParser
+from backend.src.ingestion.text_chunker import TextChunker
+from backend.src.ingestion.embedding_generator import EmbeddingGenerator
+from backend.src.ingestion.vector_db_manager import VectorDBManager
+from backend.src.models.data_models import DocumentType
 
 class KnowledgeIngestion:
     """Orchestrates document ingestion pipeline."""

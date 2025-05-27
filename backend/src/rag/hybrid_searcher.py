@@ -9,9 +9,9 @@ from loguru import logger
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from src.ingestion.embedding_generator import EmbeddingGenerator
-from src.ingestion.vector_db_manager import VectorDBManager
-from src.models.data_models import RetrievedContext, TextChunk
+from backend.src.ingestion.embedding_generator import EmbeddingGenerator
+from backend.src.ingestion.vector_db_manager import VectorDBManager
+from backend.src.models.data_models import RetrievedContext, TextChunk
 
 
 class HybridSearcher:
