@@ -40,7 +40,8 @@ class VectorDBManager:
             vector_dimensions: Dimensionality of embeddings
             distance_metric: Distance metric to use (cosine, euclid, or dot) - will be converted to enum
         """
-        self.url = url or os.getenv("QDRANT_URL", "http://localhost:6333")
+        # self.url = url or os.getenv("QDRANT_URL", "http://localhost:6333")
+        self.url = "http://localhost:6333"
         self.api_key = api_key or os.getenv("QDRANT_API_KEY")
         self.collection_name = collection_name or os.getenv("QDRANT_COLLECTION_NAME", "knowledge_base")
         self.vector_dimensions = vector_dimensions
