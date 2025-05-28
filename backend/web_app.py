@@ -43,8 +43,17 @@ origins = [
     "http://localhost:5173",      # SvelteKit dev server
     "http://localhost:4173",      # SvelteKit preview
     "http://localhost:3000",      # Alternative dev port
+    "http://frontend:3000",       # Docker container frontend
     "https://your-domain.com",    # Production frontend
 ]
+
+# Allow Docker network ranges for development
+import os
+if os.getenv("DOCKER_ENV") == "true":
+    origins.extend([
+        "http://172.20.0.0/16",   # Docker network range
+        "http://ragengine-frontend:3000",  # Container name
+    ])
 
 app.add_middleware(
     CORSMiddleware,
