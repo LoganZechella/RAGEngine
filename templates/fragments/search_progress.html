@@ -102,7 +102,7 @@
         </div>
     </div>
 
-    <!-- Auto-load results when complete -->
+    <!-- Hidden auto-load trigger -->
     <div 
         id="auto-load-results"
         hx-get="/search-results/{{ task_id }}"
@@ -120,85 +120,99 @@
     const taskId = progressContainer.getAttribute('data-task-id');
     if (!taskId) return;
 
-    // Create EventSource connection manually
-    const eventSource = new EventSource(`/search-progress/${taskId}`);
-    
-    eventSource.onopen = function(e) {
-        console.log('SSE connection opened for task:', taskId);
-    };
-    
-    eventSource.onmessage = function(e) {
-        console.log('SSE message received:', e.data);
-        try {
-            const data = JSON.parse(e.data);
-            console.log('Parsed SSE data:', data);
-            updateSearchProgress(data);
-        } catch (error) {
-            console.error('Error parsing SSE data:', error, 'Raw data:', e.data);
-        }
-    };
-    
-    eventSource.addEventListener('progress', function(e) {
-        console.log('Progress event received:', e.data);
-        try {
-            const data = JSON.parse(e.data);
-            console.log('Progress data:', data);
-            updateSearchProgress(data);
-        } catch (error) {
-            console.error('Error parsing progress data:', error, 'Raw data:', e.data);
-        }
-    });
-    
-    eventSource.addEventListener('complete', function(e) {
-        console.log('Complete event received:', e.data);
-        try {
-            const data = JSON.parse(e.data);
-            console.log('Complete data:', data);
-            updateSearchProgress(data);
-            
-            // Auto-load results when complete
-            if (data.status === 'completed') {
-                console.log('Search completed, auto-loading results...');
-                setTimeout(() => {
-                    const autoLoad = document.getElementById('auto-load-results');
-                    if (autoLoad) {
-                        console.log('Triggering auto-load...');
-                        htmx.trigger(autoLoad, 'click');
-                    } else {
-                        console.error('Auto-load element not found');
-                    }
-                }, 500);  // Reduced delay for faster response
-            }
-            
-            // Close the EventSource immediately on completion
-            console.log('Closing EventSource for completed task');
-            eventSource.close();
-        } catch (error) {
-            console.error('Error handling completion:', error);
-            eventSource.close();
-        }
-    });
-    
-    eventSource.onerror = function(e) {
-        console.error('SSE connection error:', e);
-        // Don't close immediately, let it retry
-    };
-    
-    // Clean up on page unload
-    window.addEventListener('beforeunload', function() {
+    let eventSource = null;
+    let isCompleted = false;
+    let autoLoadAttempted = false;
+
+    console.log(`Initializing search progress for task: ${taskId}`);
+
+    function initializeEventSource() {
         if (eventSource) {
             eventSource.close();
         }
-    });
+
+        eventSource = new EventSource(`/search-progress/${taskId}`);
+        
+        eventSource.onopen = function(e) {
+            console.log('SSE connection opened for task:', taskId);
+        };
+        
+        eventSource.onmessage = function(e) {
+            try {
+                const data = JSON.parse(e.data);
+                console.log('SSE data received:', data.status, data.progress + '%');
+                updateSearchProgress(data);
+            } catch (error) {
+                console.error('Error parsing SSE data:', error, 'Raw data:', e.data);
+            }
+        };
+        
+        eventSource.onerror = function(e) {
+            console.error('SSE connection error for task:', taskId, e);
+            if (!isCompleted) {
+                // Only retry if not completed
+                setTimeout(() => {
+                    if (!isCompleted && eventSource.readyState === EventSource.CLOSED) {
+                        console.log('Retrying SSE connection...');
+                        initializeEventSource();
+                    }
+                }, 2000);
+            }
+        };
+    }
+
+    function closeEventSource() {
+        if (eventSource) {
+            console.log('Closing SSE connection for task:', taskId);
+            eventSource.close();
+            eventSource = null;
+        }
+    }
+
+    function loadSearchResults() {
+        if (autoLoadAttempted) {
+            console.log('Auto-load already attempted for task:', taskId);
+            return;
+        }
+        
+        autoLoadAttempted = true;
+        console.log('Loading search results for task:', taskId);
+        
+        // Use fetch to get the results and replace the container
+        fetch(`/search-results/${taskId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.text();
+            })
+            .then(html => {
+                console.log('Search results loaded successfully');
+                const searchContainer = document.getElementById('search-container');
+                if (searchContainer) {
+                    searchContainer.innerHTML = html;
+                } else {
+                    console.error('Search container not found');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to load search results:', error);
+                const searchContainer = document.getElementById('search-container');
+                if (searchContainer) {
+                    searchContainer.innerHTML = `
+                        <div class="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded">
+                            <strong>Error:</strong> Failed to load search results. ${error.message}
+                        </div>
+                    `;
+                }
+            });
+    }
 
     function updateSearchProgress(data) {
-        console.log('Updating search progress with data:', data);
-        
         // Update main progress bar
         const progressBar = document.getElementById('main-progress-bar');
         if (progressBar) {
             progressBar.style.width = data.progress + '%';
-            console.log('Updated progress bar to:', data.progress + '%');
         }
 
         // Update percentage display
@@ -247,7 +261,7 @@
         }
 
         // Handle completion
-        if (data.status === 'completed') {
+        if (data.status === 'completed' && data.progress >= 100) {
             handleSearchComplete(data);
         } else if (data.status === 'error') {
             handleSearchError(data);
@@ -313,11 +327,16 @@
     }
 
     function handleSearchComplete(data) {
+        console.log('Search completed for task:', taskId);
+        isCompleted = true;
+        
+        // Stop spinner
         const spinner = document.getElementById('spinner');
         if (spinner) {
             spinner.classList.add('hidden');
         }
 
+        // Hide cancel button
         const cancelButton = document.getElementById('cancel-button');
         if (cancelButton) {
             cancelButton.classList.add('hidden');
@@ -326,11 +345,22 @@
         // Show completion checkmark
         const progressPhase = document.getElementById('progress-phase');
         if (progressPhase) {
-            progressPhase.innerHTML = '✅ Search Completed';
+            progressPhase.innerHTML = '✅ Search Completed - Loading Results...';
         }
+
+        // Close EventSource
+        closeEventSource();
+
+        // Load results with a small delay to ensure backend is ready
+        setTimeout(() => {
+            loadSearchResults();
+        }, 500);
     }
 
     function handleSearchError(data) {
+        console.error('Search failed for task:', taskId, data.message);
+        isCompleted = true;
+        
         const progressBar = document.getElementById('main-progress-bar');
         if (progressBar) {
             progressBar.classList.add('bg-red-500');
@@ -341,15 +371,34 @@
         if (progressPhase) {
             progressPhase.innerHTML = '❌ Search Failed';
         }
-    }
-})();
 
-// Quick search function
-function quickSearch(query) {
-    const searchInput = document.getElementById('search-query');
-    if (searchInput) {
-        searchInput.value = query;
-        document.getElementById('search-form').dispatchEvent(new Event('submit'));
+        closeEventSource();
     }
-}
-</script> 
+
+    // Initialize the EventSource
+    initializeEventSource();
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', function() {
+        closeEventSource();
+    });
+
+    // Clean up when element is removed from DOM
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.removedNodes.forEach(function(node) {
+                if (node === progressContainer) {
+                    console.log('Progress container removed, cleaning up');
+                    closeEventSource();
+                    observer.disconnect();
+                }
+            });
+        });
+    });
+    
+    if (progressContainer.parentNode) {
+        observer.observe(progressContainer.parentNode, { childList: true });
+    }
+
+})();
+</script>

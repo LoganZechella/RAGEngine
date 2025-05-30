@@ -12,7 +12,8 @@ import os
 from loguru import logger
 
 from backend.src.models.data_models import ParsedDocument, StructuredTable, DocumentType
-from backend.src.ingestion.content_filter import ScientificContentFilter
+from backend.src.models.content_types import ContentType
+from .content_filter_factory import ContentFilterFactory
 
 
 class PdfParser:
@@ -20,25 +21,33 @@ class PdfParser:
     Extracts text, tables, and structural metadata from PDF documents using PyMuPDF4LLM.
     """
     
-    def __init__(self, use_ocr: bool = False, ocr_language: str = 'eng', enable_content_filtering: bool = True):
+    def __init__(self, 
+                 use_ocr: bool = False, 
+                 ocr_language: str = 'eng', 
+                 enable_content_filtering: bool = True,
+                 content_type: Optional[ContentType] = None,
+                 enable_auto_detection: bool = True):
         """
         Initialize the PDF parser.
         
         Args:
             use_ocr: Whether to use OCR (Note: PyMuPDF4LLM handles underlying text extraction)
             ocr_language: Language for OCR (Note: PyMuPDF4LLM handles underlying text extraction)
-            enable_content_filtering: Whether to enable optimized content filtering for scientific documents
+            enable_content_filtering: Whether to enable optimized content filtering
+            content_type: Specific content type for filtering, None for auto-detection
+            enable_auto_detection: Whether to enable automatic document type detection
         """
         self.use_ocr = use_ocr
         self.ocr_language = ocr_language
         self.enable_content_filtering = enable_content_filtering
+        self.content_type = content_type
         
-        # Initialize content filter for scientific documents
+        # Initialize content filter factory
         if self.enable_content_filtering:
-            self.content_filter = ScientificContentFilter()
-            logger.info("Content filtering enabled for scientific document optimization")
+            self.filter_factory = ContentFilterFactory(enable_auto_detection)
+            logger.info("Content filtering enabled with automatic document type detection")
         else:
-            self.content_filter = None
+            self.filter_factory = None
             
         # Note: With PyMuPDF4LLM, direct OCR control here might be less critical
         # as it handles text extraction comprehensively.
@@ -68,6 +77,13 @@ class PdfParser:
                     show_progress=False
                 )
                 
+                # Get appropriate filter
+                content_filter = self.filter_factory.get_filter(
+                    content_type=self.content_type,
+                    document_text=markdown_pages[0].get('text', '')[:5000] if markdown_pages else '',
+                    document_title=document_id
+                )
+                
                 # Filter and process pages
                 filtered_content = []
                 for page_idx, page in enumerate(markdown_pages):
@@ -78,7 +94,7 @@ class PdfParser:
                         continue
                     
                     # Filter the page content
-                    cleaned_text = self.content_filter.filter_page_content(page_text)
+                    cleaned_text = content_filter.filter_page_content(page_text)
                     if cleaned_text:
                         filtered_content.append(cleaned_text)
                 
@@ -101,11 +117,13 @@ class PdfParser:
             # Add page count and filtering stats to metadata
             metadata['page_count'] = len(doc)
             
-            if self.enable_content_filtering and self.content_filter:
-                filtering_stats = self.content_filter.get_filtering_stats()
+            if self.enable_content_filtering and self.filter_factory:
+                filtering_stats = content_filter.get_filtering_stats()
                 metadata['filtering_stats'] = filtering_stats
+                metadata['content_type_detected'] = content_filter.__class__.__name__
                 metadata['filtered_pages'] = len(filtered_content) if 'filtered_content' in locals() else len(doc)
                 logger.info(f"Content filtering stats: {filtering_stats}")
+                logger.info(f"Detected content type: {content_filter.__class__.__name__}")
             
             doc.close()
 

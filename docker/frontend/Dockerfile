@@ -14,8 +14,8 @@ WORKDIR /app
 # Copy package files
 COPY RAGEngine-Frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production --silent
+# Install ALL dependencies (including dev dependencies) for building
+RUN npm ci --silent
 
 # Copy source code
 COPY RAGEngine-Frontend/ ./
@@ -49,8 +49,8 @@ COPY --from=builder /app/package*.json ./
 COPY docker/frontend/entrypoint.sh /docker/frontend/entrypoint.sh
 RUN chmod +x /docker/frontend/entrypoint.sh
 
-# Install only production dependencies
-RUN npm ci --only=production --silent && \
+# Install only production dependencies (using modern npm syntax)
+RUN npm ci --omit=dev --silent && \
     npm cache clean --force
 
 # Create docker directory and change ownership to non-root user

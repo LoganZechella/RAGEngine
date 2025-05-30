@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Error - RAGEngine{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-red-900 border border-red-700 rounded-lg p-8 text-center">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-2xl font-bold text-red-200 mb-4">System Error</h2>
+            <div class="bg-red-800 rounded-lg p-4 mb-6">
+                <p class="text-red-100 text-sm font-mono">{{ error }}</p>
+            </div>
+            <div class="space-y-4">
+                <p class="text-red-200">Please check the following:</p>
+                <ul class="text-red-300 text-sm space-y-2">
+                    <li>• Ensure all required environment variables are set</li>
+                    <li>• Verify Qdrant database is running</li>
+                    <li>• Check API keys are valid and have sufficient credits</li>
+                    <li>• Review the server logs for detailed error information</li>
+                </ul>
+            </div>
+            <div class="mt-6">
+                <a href="/" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors">
+                    Try Again
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

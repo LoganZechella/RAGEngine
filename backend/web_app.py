@@ -5,7 +5,7 @@ import uuid
 import time
 import threading
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File, Form, HTTPException
@@ -63,10 +63,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
+# FIXED: Mount static files from correct directory (working directory is root)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Initialize templates
+# FIXED: Initialize templates from correct directory (working directory is root)
 templates = Jinja2Templates(directory="templates")
 
 # Global progress tracking
@@ -131,6 +131,43 @@ templates.env.filters["format_confidence"] = format_confidence
 templates.env.filters["format_score_bar"] = format_score_bar
 templates.env.filters["format_timestamp"] = format_timestamp
 
+# Background task cleanup
+async def cleanup_old_tasks():
+    """Clean up completed tasks after a delay."""
+    while True:
+        try:
+            current_time = datetime.now()
+            tasks_to_remove = []
+            
+            for task_id, task in search_tasks.items():
+                # Remove tasks that are completed and older than 5 minutes
+                if task.get("status") in ["completed", "error", "cancelled"]:
+                    completion_time = task.get("completion_time")
+                    if completion_time and (current_time - completion_time).total_seconds() > 300:  # 5 minutes
+                        tasks_to_remove.append(task_id)
+                
+                # Remove very old tasks regardless of status (older than 1 hour)
+                start_time = task.get("start_time")
+                if start_time and (current_time - start_time).total_seconds() > 3600:  # 1 hour
+                    tasks_to_remove.append(task_id)
+            
+            for task_id in tasks_to_remove:
+                if task_id in search_tasks:
+                    logger.info(f"Cleaning up old task: {task_id}")
+                    del search_tasks[task_id]
+                if task_id in search_events:
+                    del search_events[task_id]
+            
+            await asyncio.sleep(60)  # Run cleanup every minute
+        except Exception as e:
+            logger.error(f"Error in task cleanup: {e}")
+            await asyncio.sleep(60)
+
+# Start background cleanup task
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(cleanup_old_tasks())
+
 # Routes
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -190,7 +227,8 @@ async def search_with_progress(
         "total_phases": 8 if mode == "hybrid" and synthesize else (6 if synthesize else 4),
         "errors": [],
         "cancelled": False,
-        "results": None
+        "results": None,
+        "results_retrieved": False
     }
     
     # Create event queue for this task
@@ -327,13 +365,18 @@ async def perform_search_with_progress(task_id: str, query: str, mode: str, synt
         await update_search_progress(task_id, 8, 97, "Finalizing results...")
         await asyncio.sleep(0.2)
         
-        # Store results
+        # FIXED: Store results and mark completion properly
         task["results"] = results
+        task["completion_time"] = datetime.now()
+        
+        # Update status AFTER results are stored
         task["status"] = "completed"
         task["progress"] = 100
         task["phase"] = "Completed"
         task["message"] = f"Search completed! Found {results.get('num_results', 0)} results"
         task["estimated_completion"] = datetime.now()
+        
+        logger.info(f"Search task {task_id} completed successfully with {results.get('num_results', 0)} results")
         
         # Notify completion
         if task_id in search_events:
@@ -350,6 +393,7 @@ async def perform_search_with_progress(task_id: str, query: str, mode: str, synt
         task["status"] = "error"
         task["message"] = f"Search failed: {str(e)}"
         task["errors"].append(str(e))
+        task["completion_time"] = datetime.now()
         
         # Notify error
         if task_id in search_events:
@@ -395,7 +439,7 @@ async def update_search_progress(task_id: str, phase: int, progress: int, messag
     if task_id in search_events:
         try:
             await search_events[task_id].put("update")
-            logger.info(f"Progress update queued for task {task_id}: {progress}% - {message}")
+            logger.debug(f"Progress update queued for task {task_id}: {progress}% - {message}")
         except Exception as e:
             logger.error(f"Failed to notify SSE listeners for task {task_id}: {e}")
     else:
@@ -403,7 +447,7 @@ async def update_search_progress(task_id: str, phase: int, progress: int, messag
         search_events[task_id] = asyncio.Queue()
         try:
             await search_events[task_id].put("update")
-            logger.info(f"Created queue and sent update for task {task_id}: {progress}% - {message}")
+            logger.debug(f"Created queue and sent update for task {task_id}: {progress}% - {message}")
         except Exception as e:
             logger.error(f"Failed to create queue and notify for task {task_id}: {e}")
 
@@ -434,7 +478,7 @@ async def search_progress_stream(task_id: str):
             
             # Check if task exists
             if task_id not in search_tasks:
-                logger.warning(f"Task {task_id} not found")
+                logger.warning(f"Task {task_id} not found for SSE connection")
                 yield f"data: {{\"error\": \"Task not found: {task_id}\"}}\n\n"
                 return
             
@@ -468,7 +512,7 @@ async def search_progress_stream(task_id: str):
                         logger.info(f"Cleaned up event queue for completed task {task_id}")
                     return
             
-            # Listen for updates with polling fallback
+            # FIXED: Better completion handling
             last_progress = -1
             last_message = ""
             max_iterations = 200  # Prevent infinite loops (200 * 0.5s = 100s max)
@@ -476,18 +520,15 @@ async def search_progress_stream(task_id: str):
             
             while task_id in search_tasks and iteration < max_iterations:
                 try:
-                    iteration += 1
-                    
-                    # Try to get event notification with short timeout
+                    # Try to get event notification with timeout
                     try:
-                        await asyncio.wait_for(event_queue.get(), timeout=0.5)
-                        logger.debug(f"Received queue notification for task {task_id}")
+                        await asyncio.wait_for(event_queue.get(), timeout=1.0)
                     except asyncio.TimeoutError:
-                        # Continue with polling - this is normal
+                        # Continue with polling
                         pass
                     
                     if task_id not in search_tasks:
-                        logger.info(f"Task {task_id} no longer exists, ending SSE stream")
+                        logger.debug(f"Task {task_id} no longer exists, ending SSE stream")
                         break
                         
                     task = search_tasks[task_id]
@@ -496,12 +537,12 @@ async def search_progress_stream(task_id: str):
                     if task["progress"] != last_progress or task["message"] != last_message:
                         data = prepare_progress_data(task)
                         yield f"data: {json.dumps(data)}\n\n"
-                        logger.info(f"SSE update sent for task {task_id}: {data['progress']}% - {data['message']}")
+                        logger.debug(f"SSE update sent for task {task_id}: {data['progress']}% - {data['message']}")
                         last_progress = task["progress"]
                         last_message = task["message"]
                     
-                    # Check if task is complete
-                    if task["status"] in ["completed", "error", "cancelled"]:
+                    # FIXED: End stream only when task is truly complete
+                    if task["status"] in ["completed", "error", "cancelled"] and task["progress"] >= 100:
                         data = prepare_progress_data(task)
                         yield f"event: complete\ndata: {json.dumps(data)}\n\n"
                         logger.info(f"Task {task_id} completed, sending completion event and closing SSE")
@@ -512,7 +553,7 @@ async def search_progress_stream(task_id: str):
                             logger.info(f"Cleaned up event queue for task {task_id}")
                         break
                         
-                    # Small delay to prevent excessive polling
+                    # Prevent excessive polling
                     await asyncio.sleep(0.5)
                         
                 except Exception as inner_e:
@@ -529,10 +570,10 @@ async def search_progress_stream(task_id: str):
             logger.error(f"SSE stream error for task {task_id}: {e}")
             yield f"data: {{\"error\": \"Stream error: {str(e)}\"}}\n\n"
         finally:
-            # Clean up event queue only
+            # Clean up event queue but keep task for result retrieval
             if task_id in search_events:
                 del search_events[task_id]
-                logger.info(f"Final cleanup of event queue for task {task_id}")
+                logger.debug(f"Cleaned up event queue for task {task_id}")
     
     return EventSourceResponse(event_generator())
 
@@ -564,14 +605,18 @@ async def cancel_search(task_id: str):
         search_tasks[task_id]["cancelled"] = True
         search_tasks[task_id]["status"] = "cancelled"
         search_tasks[task_id]["message"] = "Search cancelled by user"
+        search_tasks[task_id]["completion_time"] = datetime.now()
         return HTMLResponse('<div class="text-yellow-500">Search cancelled</div>')
     return HTMLResponse('<div class="text-red-500">Search not found</div>')
 
+# FIXED: Improved result retrieval to prevent race conditions
 @app.get("/search-results/{task_id}")
 async def get_search_results(request: Request, task_id: str):
     """Get the final search results (HTMX version - returns HTML)."""
+    logger.info(f"Results requested for task {task_id}")
+    
     if task_id not in search_tasks:
-        logger.warning(f"Search results requested for non-existent task: {task_id}")
+        logger.warning(f"Task {task_id} not found when requesting results")
         return HTMLResponse('<div class="text-red-500">Search not found</div>')
     
     task = search_tasks[task_id]
@@ -579,14 +624,21 @@ async def get_search_results(request: Request, task_id: str):
         logger.warning(f"Results requested for incomplete task {task_id}: status={task['status']}, has_results={task.get('results') is not None}")
         return HTMLResponse('<div class="text-yellow-500">Results not ready</div>')
     
-    # Extract results before cleanup
+    # Check if results exist
+    if not task.get("results"):
+        logger.warning(f"Task {task_id} completed but no results found")
+        return HTMLResponse('<div class="text-yellow-500">No results available</div>')
+    
+    # Get results
     results = task["results"]
     query = task["query"]
     mode = task["mode"]
     
-    # Remove task from memory after successful retrieval
-    del search_tasks[task_id]
-    logger.info(f"Successfully retrieved and cleaned up task {task_id} - found {results.get('num_results', 0)} results")
+    # FIXED: Mark as retrieved but don't delete immediately
+    task["results_retrieved"] = True
+    task["results_retrieved_time"] = datetime.now()
+    
+    logger.info(f"Returning results for task {task_id}: {results.get('num_results', 0)} results")
     
     return templates.TemplateResponse("fragments/search_results.html", {
         "request": request,
@@ -605,7 +657,7 @@ async def api_get_search_results(task_id: str):
     if task["status"] != "completed" or not task.get("results"):
         raise HTTPException(status_code=202, detail="Results not ready")
     
-    # Get results without cleaning up task (let it expire naturally)
+    # Get results without cleaning up task (let background cleanup handle it)
     results = task["results"]
     query = task["query"]
     mode = task["mode"]
@@ -649,7 +701,8 @@ async def api_search_with_progress(
         "total_phases": 8 if mode == "hybrid" and synthesize else (6 if synthesize else 4),
         "errors": [],
         "cancelled": False,
-        "results": None
+        "results": None,
+        "results_retrieved": False
     }
     
     # Create event queue for this task
@@ -851,9 +904,43 @@ async def progress_stream(task_id: str):
     
     return EventSourceResponse(event_generator())
 
+# FIXED: HTMX endpoints now return HTML instead of JSON
 @app.get("/system-info")
 async def system_info(request: Request):
-    """Get system information as rendered HTML fragment."""
+    """Get system information as HTML for HTMX (was returning JSON)."""
+    if not kb_api:
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
+    
+    try:
+        info = kb_api.get_system_info()
+        return templates.TemplateResponse("fragments/system_info.html", {
+            "request": request,
+            "system_info": info
+        })
+    except Exception as e:
+        logger.error(f"System info error: {e}")
+        return HTMLResponse(f'<div class="text-red-500">System info error: {str(e)}</div>')
+
+@app.get("/documents")
+async def document_list(request: Request):
+    """Get processed documents list as HTML for HTMX (was returning JSON)."""
+    if not kb_api:
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
+    
+    try:
+        docs = kb_api.get_processed_documents()
+        return templates.TemplateResponse("fragments/document_list.html", {
+            "request": request,
+            "documents": docs
+        })
+    except Exception as e:
+        logger.error(f"Document list error: {e}")
+        return HTMLResponse(f'<div class="text-red-500">Document list error: {str(e)}</div>')
+
+# JSON API versions for SvelteKit frontend
+@app.get("/api/system-info")
+async def api_system_info():
+    """Get system information as JSON for SvelteKit."""
     if not kb_api:
         return HTMLResponse('<div class="text-red-500">API not available</div>')
     
@@ -948,4 +1035,4 @@ async def clear_all_tasks():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080) 
+    uvicorn.run(app, host="0.0.0.0", port=8080)

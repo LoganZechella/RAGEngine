@@ -7,7 +7,7 @@ from backend.src.ingestion.vector_db_manager import VectorDBManager
 from backend.src.rag.rag_engine import RAGEngine
 
 class KnowledgeBaseAPI:
-    """Simple API interface for the knowledge base."""
+    """Enhanced API interface for the knowledge base with content filtering support."""
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -15,17 +15,17 @@ class KnowledgeBaseAPI:
         # Initialize shared components
         self.embedding_generator = EmbeddingGenerator(
             api_key=config["openai_api_key"],
-            dimensions=config.get("vector_dimensions", 3072)
+            dimensions=config.get("vector_dimensions", 1536)
         )
         
         self.vector_db = VectorDBManager(
             url=config["qdrant_url"],
             api_key=config.get("qdrant_api_key"),
             collection_name=config.get("collection_name", "knowledge_base"),
-            vector_dimensions=config.get("vector_dimensions", 3072)
+            vector_dimensions=config.get("vector_dimensions", 1536)
         )
         
-        # Initialize ingestion
+        # Initialize ingestion with enhanced content filtering support
         self.ingestion = KnowledgeIngestion(
             source_paths=config["source_paths"],
             openai_api_key=config["openai_api_key"],
@@ -33,8 +33,13 @@ class KnowledgeBaseAPI:
             qdrant_api_key=config.get("qdrant_api_key"),
             collection_name=config.get("collection_name", "knowledge_base"),
             chunking_strategy=config.get("chunking_strategy", "paragraph"),
-            max_chunk_size_tokens=config.get("chunk_size_tokens", 1024),
-            chunk_overlap_tokens=config.get("chunk_overlap_tokens", 200)
+            max_chunk_size_tokens=config.get("chunk_size_tokens", 512),
+            chunk_overlap_tokens=config.get("chunk_overlap_tokens", 100),
+            vector_dimensions=config.get("vector_dimensions", 1536),
+            enable_content_filtering=config.get("enable_content_filtering", True),
+            enable_deduplication=config.get("enable_deduplication", True),
+            content_type=config.get("default_content_type", "auto"),
+            enable_auto_detection=config.get("enable_document_type_detection", True)
         )
         
         # Initialize RAG
@@ -48,16 +53,16 @@ class KnowledgeBaseAPI:
             top_k_rerank=config.get("top_k_rerank", 5)
         )
         
-        logger.info("KnowledgeBaseAPI initialized successfully")
+        logger.info("KnowledgeBaseAPI initialized successfully with content filtering support")
     
     def ingest_documents(self) -> Dict[str, Any]:
-        """Ingest all documents from configured sources."""
-        logger.info("Starting document ingestion...")
+        """Ingest all documents from configured sources with content filtering."""
+        logger.info("Starting document ingestion with content filtering...")
         return self.ingestion.process_documents()
     
     def ingest_single_document(self, file_path: str) -> Dict[str, Any]:
-        """Ingest a single document."""
-        logger.info(f"Ingesting single document: {file_path}")
+        """Ingest a single document with content filtering."""
+        logger.info(f"Ingesting single document with content filtering: {file_path}")
         return self.ingestion.process_single_document(file_path)
     
     def search(
@@ -67,7 +72,7 @@ class KnowledgeBaseAPI:
         synthesize: bool = True,
         search_only: bool = False
     ) -> Dict[str, Any]:
-        """Search the knowledge base."""
+        """Search the knowledge base with enhanced metadata."""
         logger.info(f"Searching for: {query}")
         
         if search_only:
@@ -194,13 +199,24 @@ class KnowledgeBaseAPI:
         return formatted_results
     
     def get_system_info(self) -> Dict[str, Any]:
-        """Get comprehensive system information."""
+        """Get comprehensive system information including content filtering details."""
         return {
             "config": {
                 "collection_name": self.config.get("collection_name"),
                 "chunking_strategy": self.config.get("chunking_strategy"),
                 "vector_dimensions": self.config.get("vector_dimensions"),
-                "source_paths": self.config.get("source_paths")
+                "source_paths": self.config.get("source_paths"),
+                "enable_content_filtering": self.config.get("enable_content_filtering"),
+                "enable_document_type_detection": self.config.get("enable_document_type_detection"),
+                "default_content_type": self.config.get("default_content_type")
+            },
+            "content_filtering": {
+                "enabled": self.config.get("enable_content_filtering", True),
+                "auto_detection": self.config.get("enable_document_type_detection", True),
+                "default_type": self.config.get("default_content_type", "auto"),
+                "policy_aggressive": self.config.get("policy_filter_aggressive", False),
+                "form_preserve_structure": self.config.get("form_filter_preserve_structure", True),
+                "scientific_legacy_mode": self.config.get("scientific_filter_legacy_mode", False)
             },
             "ingestion": self.ingestion.get_ingestion_info(),
             "rag_engine": self.rag.get_engine_info(),
@@ -208,8 +224,48 @@ class KnowledgeBaseAPI:
         }
     
     def get_processed_documents(self) -> Dict[str, Any]:
-        """Get information about processed documents."""
+        """Get information about processed documents with filtering stats."""
         return self.ingestion.document_manager.get_processed_documents()
+    
+    def get_content_filtering_stats(self) -> Dict[str, Any]:
+        """Get aggregated content filtering statistics."""
+        processed_docs = self.get_processed_documents()
+        
+        total_stats = {
+            'total_chunks_processed': 0,
+            'chunks_filtered_out': 0,
+            'chunks_cleaned': 0,
+            'boilerplate_removed': 0,
+            'duplicates_removed': 0
+        }
+        
+        content_type_counts = {}
+        docs_with_stats = 0
+        
+        for doc_path, metadata in processed_docs.items():
+            if 'filtering_stats' in metadata:
+                docs_with_stats += 1
+                stats = metadata['filtering_stats']
+                
+                for key in total_stats:
+                    if key in stats:
+                        total_stats[key] += stats[key]
+                
+                if 'content_type_detected' in metadata:
+                    content_type = metadata['content_type_detected']
+                    content_type_counts[content_type] = content_type_counts.get(content_type, 0) + 1
+        
+        overall_filter_rate = 0
+        if total_stats['total_chunks_processed'] > 0:
+            overall_filter_rate = (total_stats['chunks_filtered_out'] / total_stats['total_chunks_processed']) * 100
+        
+        return {
+            "overall_stats": total_stats,
+            "overall_filter_rate_percent": round(overall_filter_rate, 2),
+            "content_type_distribution": content_type_counts,
+            "documents_with_filtering": docs_with_stats,
+            "total_documents": len(processed_docs)
+        }
     
     def delete_collection(self) -> bool:
         """Delete the vector database collection."""
@@ -229,4 +285,17 @@ class KnowledgeBaseAPI:
     def delete_document(self, document_id: str) -> int:
         """Delete all chunks for a specific document."""
         logger.info(f"Deleting document: {document_id}")
-        return self.vector_db.delete_by_document_id(document_id) 
+        return self.vector_db.delete_by_document_id(document_id)
+    
+    def update_content_filtering_config(self, updates: Dict[str, Any]) -> bool:
+        """Update content filtering configuration (requires restart for full effect)."""
+        try:
+            for key, value in updates.items():
+                if key in self.config:
+                    self.config[key] = value
+                    logger.info(f"Updated config: {key} = {value}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update content filtering config: {e}")
+            return False
