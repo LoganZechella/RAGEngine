@@ -8,9 +8,10 @@ import re
 import hashlib
 from typing import List, Set, Dict, Any
 from loguru import logger
+from .content_filter_base import BaseContentFilter
 
 
-class ScientificContentFilter:
+class ScientificContentFilter(BaseContentFilter):
     """
     Filters out redundant and low-value content from scientific documents.
     Designed specifically for scientific reports with predictable structure.
@@ -18,6 +19,7 @@ class ScientificContentFilter:
     
     def __init__(self):
         """Initialize the content filter with patterns for scientific documents."""
+        super().__init__()
         
         # Patterns for content that should be skipped entirely
         self.skip_patterns = [

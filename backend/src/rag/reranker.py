@@ -11,7 +11,7 @@ import time
 import re
 from openai import OpenAI
 
-from src.models.data_models import RetrievedContext
+from backend.src.models.data_models import RetrievedContext
 
 
 class ReRanker:

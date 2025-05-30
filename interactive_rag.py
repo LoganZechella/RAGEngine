@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Interactive RAG Testing Tool for RAGEngine.
-Command-line interface for manual RAG testing and debugging.
+Command-line interface for manual RAG testing and debugging with enhanced content filtering.
 """
 
 import os
@@ -19,7 +19,10 @@ from loguru import logger
 # Load environment
 load_dotenv()
 
-from src.api.knowledge_base_api import KnowledgeBaseAPI
+from backend.src.api.knowledge_base_api import KnowledgeBaseAPI
+from backend.src.models.content_types import ContentType
+from backend.src.ingestion.document_type_detector import DocumentTypeDetector
+from backend.src.ingestion.content_filter_factory import ContentFilterFactory
 
 def display_enhanced_synthesis(synthesis):
     """Display synthesized knowledge with enhanced formatting."""
@@ -134,12 +137,17 @@ def display_contexts_enhanced(contexts):
             score_bar = "█" * int(initial_score * 10) + "░" * (10 - int(initial_score * 10))
             print(f"\n{i}. [{score_bar}] Score: {initial_score:.3f}")
         
-        # Document info
-        doc_id = ctx.get('metadata', {}).get('document_id', 'Unknown')
-        source = ctx.get('metadata', {}).get('source', 'Unknown')
+        # Document info with content type if available
+        metadata = ctx.get('metadata', {})
+        doc_id = metadata.get('document_id', 'Unknown')
+        source = metadata.get('source', 'Unknown')
+        content_type = metadata.get('content_type_detected', 'Unknown')
+        
         print(f"   📄 Document: {doc_id}")
         if source != 'Unknown':
             print(f"   📁 Source: {source}")
+        if content_type != 'Unknown':
+            print(f"   🏷️  Content Type: {content_type}")
         
         # Text preview
         text = ctx['text']
@@ -149,29 +157,46 @@ def display_contexts_enhanced(contexts):
             print(f"   📝 {text}")
 
 class InteractiveRAGShell(cmd.Cmd):
-    """Interactive shell for RAG testing and debugging."""
+    """Interactive shell for RAG testing and debugging with enhanced content filtering."""
     
     intro = """
-    🔍 RAGEngine Interactive Testing Shell
-    ======================================
+    🔍 RAGEngine Interactive Testing Shell with Content Filtering
+    ============================================================
     
-    Available commands:
+    Basic Commands:
     - query <text>        : Test full RAG pipeline with a query
     - search <text>       : Test hybrid search only
     - dense <text>        : Test dense search only
     - sparse <text>       : Test sparse search only
     - rerank <text>       : Test search with reranking
     - analyze <text>      : Test with knowledge synthesis
+    
+    Content Filtering Commands:
+    - detect <text>       : Test document type detection
+    - filter_test <type>  : Test specific content filter
+    - filter_stats        : Show content filtering statistics
+    - content_types       : List available content types
+    
+    Configuration Commands:
     - filters <filters>   : Set search filters (JSON format)
     - config             : Show current configuration
+    - filter_config      : Show content filtering configuration
+    - set_content_type <type> : Set default content type for processing
+    
+    System Commands:
     - stats              : Show database statistics
     - ingest             : Run document ingestion
     - system             : Show system information
     - last               : Show details from last query
     - examples           : Show example queries
+    - filter_examples    : Show content filtering examples
+    
+    Collection Management:
     - clear              : Clear all data from collection
     - delete_collection  : Delete entire collection
     - recreate_collection: Recreate collection with fresh config
+    - processed          : Show processed documents
+    
     - help               : Show this help
     - quit               : Exit the shell
     
@@ -185,19 +210,21 @@ class InteractiveRAGShell(cmd.Cmd):
         self.setup_rag_engine()
         self.current_filters = None
         self.last_results = None
+        self.document_type_detector = DocumentTypeDetector()
+        self.content_filter_factory = ContentFilterFactory()
     
     def setup_rag_engine(self):
-        """Initialize RAG engine components."""
+        """Initialize RAG engine components with enhanced content filtering."""
         try:
-            print("Initializing RAGEngine...")
+            print("Initializing RAGEngine with Enhanced Content Filtering...")
             
-            # Configuration
+            # Enhanced configuration with content filtering options
             config = {
                 "openai_api_key": os.getenv("OPENAI_API_KEY"),
                 "google_api_key": os.getenv("GOOGLE_API_KEY"),
                 "qdrant_url": os.getenv("QDRANT_URL", "http://localhost:6333"),
                 "qdrant_api_key": os.getenv("QDRANT_API_KEY"),
-                "collection_name": os.getenv("COLLECTION_NAME", "knowledge_base"),
+                "collection_name": os.getenv("QDRANT_COLLECTION_NAME", "knowledge_base"),
                 "source_paths": [os.getenv("SOURCE_DOCUMENTS_DIR", "./documents")],
                 "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "paragraph"),
                 "chunk_size_tokens": int(os.getenv("CHUNK_SIZE_TOKENS", "512")),
@@ -205,7 +232,20 @@ class InteractiveRAGShell(cmd.Cmd):
                 "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
                 "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
                 "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
-                "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))
+                "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5")),
+                
+                # Content filtering configuration
+                "enable_content_filtering": os.getenv("ENABLE_CONTENT_FILTERING", "true").lower() == "true",
+                "enable_deduplication": os.getenv("ENABLE_DEDUPLICATION", "true").lower() == "true",
+                "enable_document_type_detection": os.getenv("ENABLE_DOCUMENT_TYPE_DETECTION", "true").lower() == "true",
+                "default_content_type": os.getenv("DEFAULT_CONTENT_TYPE", "auto"),
+                "policy_filter_aggressive": os.getenv("POLICY_FILTER_AGGRESSIVE", "false").lower() == "true",
+                "form_filter_preserve_structure": os.getenv("FORM_FILTER_PRESERVE_STRUCTURE", "true").lower() == "true",
+                "scientific_filter_legacy_mode": os.getenv("SCIENTIFIC_FILTER_LEGACY_MODE", "false").lower() == "true",
+                "min_policy_chunk_length": int(os.getenv("MIN_POLICY_CHUNK_LENGTH", "30")),
+                "min_form_chunk_length": int(os.getenv("MIN_FORM_CHUNK_LENGTH", "20")),
+                "skip_empty_form_sections": os.getenv("SKIP_EMPTY_FORM_SECTIONS", "true").lower() == "true",
+                "preserve_signature_blocks": os.getenv("PRESERVE_SIGNATURE_BLOCKS", "false").lower() == "true"
             }
             
             # Validate required configuration
@@ -218,12 +258,258 @@ class InteractiveRAGShell(cmd.Cmd):
             self.kb_api = KnowledgeBaseAPI(config)
             self.config = config
             
-            print("✅ RAGEngine initialized successfully!")
+            print("✅ RAGEngine initialized successfully with enhanced content filtering!")
+            
+            # Display content filtering status
+            if config["enable_content_filtering"]:
+                print(f"🎯 Content Filtering: {'✅ Enabled' if config['enable_content_filtering'] else '❌ Disabled'}")
+                print(f"🔍 Document Type Detection: {'✅ Enabled' if config['enable_document_type_detection'] else '❌ Disabled'}")
+                print(f"🏷️  Default Content Type: {config['default_content_type']}")
             
         except Exception as e:
             print(f"❌ Failed to initialize RAGEngine: {str(e)}")
             print("Make sure Qdrant is running and API keys are set.")
             sys.exit(1)
+    
+    def do_detect(self, document_text: str):
+        """Test document type detection on provided text."""
+        if not document_text.strip():
+            print("Usage: detect <text>")
+            print("Example: detect 'PURPOSE This document establishes procedures...'")
+            return
+        
+        try:
+            print(f"\n🔍 Document Type Detection Analysis:")
+            print("=" * 60)
+            
+            detected_type, confidence = self.document_type_detector.detect_content_type(document_text)
+            
+            # Display results
+            confidence_bar = "█" * int(confidence * 10) + "░" * (10 - int(confidence * 10))
+            print(f"🏷️  Detected Type: {detected_type.value}")
+            print(f"🎯 Confidence: [{confidence_bar}] {confidence:.1%}")
+            
+            # Show what filter would be used
+            content_filter = self.content_filter_factory.get_filter(
+                content_type=detected_type,
+                document_text=document_text
+            )
+            
+            print(f"🔧 Filter Selected: {content_filter.__class__.__name__}")
+            
+            # Show pattern analysis
+            print(f"\n📊 Pattern Analysis:")
+            print(f"Text length: {len(document_text)} characters")
+            print(f"First 200 chars: {document_text[:200]}...")
+            
+        except Exception as e:
+            print(f"❌ Document type detection failed: {str(e)}")
+    
+    def do_filter_test(self, content_type: str):
+        """Test a specific content filter type."""
+        if not content_type.strip():
+            print("Usage: filter_test <content_type>")
+            print("Available types: scientific, policy_sop, form, template, general")
+            return
+        
+        try:
+            # Convert string to enum
+            if content_type.lower() not in [ct.value for ct in ContentType]:
+                print(f"❌ Invalid content type: {content_type}")
+                print(f"Available types: {', '.join([ct.value for ct in ContentType])}")
+                return
+            
+            content_type_enum = ContentType(content_type.lower())
+            content_filter = self.content_filter_factory.get_filter(content_type=content_type_enum)
+            
+            print(f"\n🔧 Testing {content_filter.__class__.__name__}:")
+            print("=" * 60)
+            
+            # Test with sample text
+            test_texts = {
+                ContentType.SCIENTIFIC: "Experiment 1 Report - Page 1 of 5\nResults as reported by Mayo Clinic show...",
+                ContentType.POLICY_SOP: "PURPOSE\nThis SOP-001 establishes procedures for...\nSCOPE\nThis applies to all personnel...",
+                ContentType.FORM: "☐ Check applicable boxes\nSignature: _________________ Date: _______\nEnter information below:",
+                ContentType.TEMPLATE: "[Enter type of device here]\nContact QA to obtain the next available document number...",
+                ContentType.GENERAL: "This is a general document with standard content and normal text."
+            }
+            
+            sample_text = test_texts.get(content_type_enum, "Sample text for testing.")
+            
+            print(f"📝 Sample Text:")
+            print(f"{sample_text}")
+            
+            print(f"\n🔍 Filter Analysis:")
+            should_skip = content_filter.should_skip_chunk(sample_text)
+            cleaned_text = content_filter.clean_text(sample_text)
+            
+            print(f"Should Skip: {'Yes' if should_skip else 'No'}")
+            print(f"Original Length: {len(sample_text)} chars")
+            print(f"Cleaned Length: {len(cleaned_text)} chars")
+            print(f"Cleaned Text: {cleaned_text[:200]}...")
+            
+        except Exception as e:
+            print(f"❌ Filter test failed: {str(e)}")
+    
+    def do_filter_stats(self, line):
+        """Show content filtering statistics from last ingestion."""
+        try:
+            processed_docs = self.kb_api.get_processed_documents()
+            
+            print(f"\n📊 Content Filtering Statistics:")
+            print("=" * 60)
+            
+            if not processed_docs:
+                print("No documents processed yet. Run 'ingest' to see filtering stats.")
+                return
+            
+            total_filtering_stats = {
+                'total_chunks_processed': 0,
+                'chunks_filtered_out': 0,
+                'chunks_cleaned': 0,
+                'boilerplate_removed': 0,
+                'duplicates_removed': 0
+            }
+            
+            docs_with_stats = 0
+            content_type_counts = {}
+            
+            for doc_path, metadata in processed_docs.items():
+                doc_name = os.path.basename(doc_path)
+                
+                # Check if document has filtering stats
+                if 'filtering_stats' in metadata:
+                    docs_with_stats += 1
+                    stats = metadata['filtering_stats']
+                    
+                    # Aggregate stats
+                    for key in total_filtering_stats:
+                        if key in stats:
+                            total_filtering_stats[key] += stats[key]
+                    
+                    print(f"📄 {doc_name}:")
+                    if 'content_type_detected' in metadata:
+                        content_type = metadata['content_type_detected']
+                        content_type_counts[content_type] = content_type_counts.get(content_type, 0) + 1
+                        print(f"   🏷️  Content Type: {content_type}")
+                    
+                    filter_rate = stats.get('filter_rate_percent', 0)
+                    print(f"   🎯 Filter Rate: {filter_rate}%")
+                    print(f"   📊 Chunks: {stats.get('total_chunks_processed', 0)} → {stats.get('total_chunks_processed', 0) - stats.get('chunks_filtered_out', 0)}")
+            
+            if docs_with_stats > 0:
+                print(f"\n📈 Overall Statistics:")
+                total_processed = total_filtering_stats['total_chunks_processed']
+                total_filtered = total_filtering_stats['chunks_filtered_out']
+                overall_filter_rate = (total_filtered / total_processed * 100) if total_processed > 0 else 0
+                
+                print(f"   Documents with filtering: {docs_with_stats}")
+                print(f"   Total chunks processed: {total_processed:,}")
+                print(f"   Total chunks filtered: {total_filtered:,}")
+                print(f"   Overall filter rate: {overall_filter_rate:.1f}%")
+                print(f"   Duplicates removed: {total_filtering_stats['duplicates_removed']:,}")
+                
+                if content_type_counts:
+                    print(f"\n🏷️  Content Type Distribution:")
+                    for content_type, count in content_type_counts.items():
+                        print(f"   • {content_type}: {count} documents")
+            
+        except Exception as e:
+            print(f"❌ Failed to get filtering stats: {str(e)}")
+    
+    def do_content_types(self, line):
+        """List available content types and their descriptions."""
+        print(f"\n🏷️  Available Content Types:")
+        print("=" * 60)
+        
+        descriptions = {
+            ContentType.SCIENTIFIC: "Scientific reports, experiments, research papers",
+            ContentType.POLICY_SOP: "Policies, SOPs, procedures, quality documents",
+            ContentType.FORM: "Forms, structured documents with fields and checkboxes",
+            ContentType.TEMPLATE: "Templates with placeholders and instructions",
+            ContentType.GENERAL: "General documents without specific patterns"
+        }
+        
+        for content_type in ContentType:
+            description = descriptions.get(content_type, "No description available")
+            print(f"• {content_type.value:15} - {description}")
+    
+    def do_filter_config(self, line):
+        """Show current content filtering configuration."""
+        print(f"\n🔧 Content Filtering Configuration:")
+        print("=" * 60)
+        
+        config = self.config
+        print(f"Content Filtering: {'✅ Enabled' if config.get('enable_content_filtering') else '❌ Disabled'}")
+        print(f"Document Type Detection: {'✅ Enabled' if config.get('enable_document_type_detection') else '❌ Disabled'}")
+        print(f"Deduplication: {'✅ Enabled' if config.get('enable_deduplication') else '❌ Disabled'}")
+        print(f"Default Content Type: {config.get('default_content_type', 'auto')}")
+        
+        print(f"\n📋 Filter Settings:")
+        print(f"Policy Filter Aggressive: {'✅' if config.get('policy_filter_aggressive') else '❌'}")
+        print(f"Form Preserve Structure: {'✅' if config.get('form_filter_preserve_structure') else '❌'}")
+        print(f"Scientific Legacy Mode: {'✅' if config.get('scientific_filter_legacy_mode') else '❌'}")
+        print(f"Skip Empty Form Sections: {'✅' if config.get('skip_empty_form_sections') else '❌'}")
+        print(f"Preserve Signature Blocks: {'✅' if config.get('preserve_signature_blocks') else '❌'}")
+        
+        print(f"\n📏 Chunk Length Limits:")
+        print(f"Min Policy Chunk Length: {config.get('min_policy_chunk_length', 30)} chars")
+        print(f"Min Form Chunk Length: {config.get('min_form_chunk_length', 20)} chars")
+    
+    def do_set_content_type(self, content_type: str):
+        """Set default content type for processing."""
+        if not content_type.strip():
+            print("Usage: set_content_type <type>")
+            print("Available types: auto, scientific, policy_sop, form, template, general")
+            return
+        
+        valid_types = ["auto"] + [ct.value for ct in ContentType]
+        
+        if content_type.lower() not in valid_types:
+            print(f"❌ Invalid content type: {content_type}")
+            print(f"Available types: {', '.join(valid_types)}")
+            return
+        
+        self.config['default_content_type'] = content_type.lower()
+        print(f"✅ Default content type set to: {content_type.lower()}")
+        print("Note: This affects new document processing. Restart for full effect.")
+    
+    def do_filter_examples(self, line):
+        """Show content filtering examples for different document types."""
+        examples = {
+            "Policy/SOP Documents": [
+                "What are the quality management procedures?",
+                "Explain the document control policy",
+                "What is the supplier evaluation process?", 
+                "How are training requirements defined?",
+                "What are the responsibilities in SOP-001?"
+            ],
+            "Form Documents": [
+                "What information is collected in complaint forms?",
+                "What are the required approvals for suppliers?",
+                "What fields are in the evaluation form?",
+                "How are incidents reported?",
+                "What signatures are required?"
+            ],
+            "Template Documents": [
+                "What sections should be included in design documents?",
+                "How should concept documents be structured?",
+                "What are the template requirements?",
+                "How to fill out proposal templates?",
+                "What placeholders need to be replaced?"
+            ]
+        }
+        
+        print(f"\n💡 Content Filtering Example Queries:")
+        print("=" * 60)
+        
+        for category, queries in examples.items():
+            print(f"\n📋 {category}:")
+            for i, query in enumerate(queries, 1):
+                print(f"   {i}. {query}")
+        
+        print(f"\n🔍 Try: query <example_text>")
+        print(f"🔧 Or: detect '<sample document text>'")
     
     def do_query(self, query_text: str):
         """Enhanced query command with better display."""
@@ -285,8 +571,13 @@ class InteractiveRAGShell(cmd.Cmd):
             
             for i, ctx in enumerate(results['contexts'][:5], 1):
                 score = ctx.get('initial_score', 0)
+                metadata = ctx.get('metadata', {})
+                content_type = metadata.get('content_type_detected', 'Unknown')
+                
                 print(f"\n{i}. Score: {score:.3f}")
-                print(f"   Document: {ctx.get('metadata', {}).get('document_id', 'Unknown')}")
+                print(f"   Document: {metadata.get('document_id', 'Unknown')}")
+                if content_type != 'Unknown':
+                    print(f"   Content Type: {content_type}")
                 print(f"   Text: {ctx['text'][:150]}...")
             
         except Exception as e:
@@ -416,7 +707,7 @@ class InteractiveRAGShell(cmd.Cmd):
             print("Current filters:", self.current_filters)
             print("Usage: filters <JSON>")
             print("Example: filters {\"document_id\": \"specific_doc\"}")
-            print("Example: filters {\"category\": \"technical\"}")
+            print("Example: filters {\"content_type_detected\": \"PolicySOPContentFilter\"}")
             print("Clear filters: filters null")
             return
         
@@ -433,18 +724,26 @@ class InteractiveRAGShell(cmd.Cmd):
     def do_config(self, line):
         """Show current configuration."""
         print(f"\n⚙️ RAGEngine Configuration:")
-        print(f"   Vector DB URL: {self.config['qdrant_url']}")
-        print(f"   Collection: {self.config['collection_name']}")
-        print(f"   Vector Dimensions: {self.config['vector_dimensions']}")
-        print(f"   Chunking Strategy: {self.config['chunking_strategy']}")
-        print(f"   Chunk Size: {self.config['chunk_size_tokens']} tokens")
-        print(f"   Chunk Overlap: {self.config['chunk_overlap_tokens']} tokens")
-        print(f"   Top K Dense: {self.config['top_k_dense']}")
-        print(f"   Top K Sparse: {self.config['top_k_sparse']}")
-        print(f"   Top K Rerank: {self.config['top_k_rerank']}")
-        print(f"   Current Filters: {self.current_filters}")
-        print(f"   OpenAI API: {'✅ Available' if self.config['openai_api_key'] else '❌ Not set'}")
-        print(f"   Google API: {'✅ Available' if self.config['google_api_key'] else '❌ Not set'}")
+        print("=" * 60)
+        print(f"Vector DB URL: {self.config['qdrant_url']}")
+        print(f"Collection: {self.config['collection_name']}")
+        print(f"Vector Dimensions: {self.config['vector_dimensions']}")
+        print(f"Chunking Strategy: {self.config['chunking_strategy']}")
+        print(f"Chunk Size: {self.config['chunk_size_tokens']} tokens")
+        print(f"Chunk Overlap: {self.config['chunk_overlap_tokens']} tokens")
+        print(f"Top K Dense: {self.config['top_k_dense']}")
+        print(f"Top K Sparse: {self.config['top_k_sparse']}")
+        print(f"Top K Rerank: {self.config['top_k_rerank']}")
+        print(f"Current Filters: {self.current_filters}")
+        
+        print(f"\n🔧 Content Filtering:")
+        print(f"Enabled: {'✅' if self.config.get('enable_content_filtering') else '❌'}")
+        print(f"Auto Detection: {'✅' if self.config.get('enable_document_type_detection') else '❌'}")
+        print(f"Default Type: {self.config.get('default_content_type', 'auto')}")
+        
+        print(f"\n🔑 API Keys:")
+        print(f"OpenAI API: {'✅ Available' if self.config['openai_api_key'] else '❌ Not set'}")
+        print(f"Google API: {'✅ Available' if self.config['google_api_key'] else '❌ Not set'}")
     
     def do_stats(self, line):
         """Show database statistics."""
@@ -463,9 +762,9 @@ class InteractiveRAGShell(cmd.Cmd):
             print(f"❌ Failed to get stats: {str(e)}")
     
     def do_ingest(self, line):
-        """Run document ingestion."""
+        """Run document ingestion with content filtering."""
         try:
-            print(f"\n📥 Starting document ingestion...")
+            print(f"\n📥 Starting document ingestion with content filtering...")
             print("-" * 60)
             
             stats = self.kb_api.ingest_documents()
@@ -479,6 +778,8 @@ class InteractiveRAGShell(cmd.Cmd):
                 print(f"   Errors: {len(stats['errors'])}")
                 for error in stats['errors'][:3]:
                     print(f"     - {error}")
+            
+            print(f"\n🎯 Use 'filter_stats' to see content filtering details")
             
         except Exception as e:
             print(f"❌ Ingestion failed: {str(e)}")
@@ -496,6 +797,13 @@ class InteractiveRAGShell(cmd.Cmd):
             print(f"   Chunking Strategy: {config_info.get('chunking_strategy')}")
             print(f"   Vector Dimensions: {config_info.get('vector_dimensions')}")
             print(f"   Source Paths: {config_info.get('source_paths')}")
+            
+            # Content filtering info
+            content_filtering_info = system_info.get('content_filtering', {})
+            print(f"\n🔧 Content Filtering:")
+            print(f"   Enabled: {'✅' if content_filtering_info.get('enabled') else '❌'}")
+            print(f"   Auto Detection: {'✅' if content_filtering_info.get('auto_detection') else '❌'}")
+            print(f"   Default Type: {content_filtering_info.get('default_type', 'auto')}")
             
             # Ingestion info
             ingestion_info = system_info.get('ingestion', {})
@@ -539,8 +847,13 @@ class InteractiveRAGShell(cmd.Cmd):
             print(f"\nAll Retrieved Contexts:")
             for i, ctx in enumerate(contexts, 1):
                 score = ctx.get('rerank_score', ctx.get('initial_score', 0))
+                metadata = ctx.get('metadata', {})
+                content_type = metadata.get('content_type_detected', 'Unknown')
+                
                 print(f"\n{i}. Score: {score:.3f}")
-                print(f"   Document: {ctx.get('metadata', {}).get('document_id', 'Unknown')}")
+                print(f"   Document: {metadata.get('document_id', 'Unknown')}")
+                if content_type != 'Unknown':
+                    print(f"   Content Type: {content_type}")
                 print(f"   Text: {ctx['text'][:100]}...")
         
         synthesis = results.get('synthesis')
@@ -548,7 +861,7 @@ class InteractiveRAGShell(cmd.Cmd):
             display_enhanced_synthesis(synthesis)
     
     def do_processed(self, line):
-        """Show processed documents."""
+        """Show processed documents with content filtering info."""
         try:
             processed_docs = self.kb_api.get_processed_documents()
             
@@ -562,8 +875,18 @@ class InteractiveRAGShell(cmd.Cmd):
                 doc_name = os.path.basename(doc_path)
                 success = metadata.get('processing_success', False)
                 last_processed = metadata.get('last_processed', 'Unknown')
+                content_type = metadata.get('content_type_detected', 'Unknown')
+                
                 status = "✅" if success else "❌"
-                print(f"   {status} {doc_name} (processed: {last_processed[:19]})")
+                type_display = f" ({content_type})" if content_type != 'Unknown' else ""
+                
+                print(f"   {status} {doc_name}{type_display}")
+                print(f"      Processed: {last_processed[:19]}")
+                
+                if 'filtering_stats' in metadata:
+                    stats = metadata['filtering_stats']
+                    filter_rate = stats.get('filter_rate_percent', 0)
+                    print(f"      Filter Rate: {filter_rate}%")
             
             if len(processed_docs) > 10:
                 print(f"   ... and {len(processed_docs) - 10} more")
@@ -574,23 +897,24 @@ class InteractiveRAGShell(cmd.Cmd):
     def do_examples(self, line):
         """Show example queries for testing."""
         examples = [
-            "What is machine learning?",
-            "Explain neural networks and deep learning",
-            "How does natural language processing work?",
-            "What are the applications of artificial intelligence?",
-            "Compare supervised and unsupervised learning",
-            "What is the difference between classification and regression?",
-            "How do convolutional neural networks work?",
-            "What are the challenges in computer vision?",
-            "Explain reinforcement learning concepts",
-            "What are transformers in deep learning?"
+            "What are the quality management procedures?",
+            "Explain the supplier evaluation process",
+            "What is the complaint investigation procedure?",
+            "How are personnel qualifications determined?",
+            "What are the document control requirements?",
+            "What is the purpose of SOP-001?",
+            "How are training requirements established?",
+            "What approvals are needed for suppliers?",
+            "What information is collected in forms?",
+            "How are identification and traceability managed?"
         ]
         
-        print(f"\n💡 Example Test Queries:")
+        print(f"\n💡 Example Test Queries (Policy/SOP focused):")
         for i, query in enumerate(examples, 1):
             print(f"   {i}. {query}")
         
         print(f"\nTry: query <example_text>")
+        print(f"Also try: filter_examples")
     
     def do_clear(self, line):
         """Clear all data from the collection without deleting the collection itself."""
@@ -659,6 +983,28 @@ class InteractiveRAGShell(cmd.Cmd):
         else:
             print("Operation cancelled.")
     
+    def help_detect(self):
+        """Help for detect command."""
+        print("""
+detect <text> - Test document type detection
+    
+    Analyzes the provided text to determine document type and confidence.
+    Shows which content filter would be selected for processing.
+    
+    Example: detect "PURPOSE This SOP establishes procedures..."
+        """)
+    
+    def help_filter_test(self):
+        """Help for filter_test command."""
+        print("""
+filter_test <content_type> - Test a specific content filter
+    
+    Tests a specific content filter with sample text to see how it behaves.
+    Available types: scientific, policy_sop, form, template, general
+    
+    Example: filter_test policy_sop
+        """)
+    
     def help_query(self):
         """Help for query command."""
         print("""
@@ -669,7 +1015,9 @@ query <text> - Test the full RAG pipeline with a query
     2. LLM-based reranking (if OpenAI key available)
     3. Knowledge synthesis (if Google key available)
     
-    Example: query What is machine learning?
+    Now includes content type information in results.
+    
+    Example: query What are the quality procedures?
         """)
     
     def help_search(self):
@@ -679,8 +1027,9 @@ search <text> - Test hybrid search only
     
     This command tests only the hybrid search component,
     combining dense vector search and sparse keyword search.
+    Shows content type information for each result.
     
-    Example: search machine learning algorithms
+    Example: search quality management procedures
         """)
     
     def help_filters(self):
@@ -693,6 +1042,7 @@ filters <JSON> - Set search filters
     
     Examples:
     filters {"document_id": "specific_document"}
+    filters {"content_type_detected": "PolicySOPContentFilter"}
     filters {"category": "technical"}
     filters null  (to clear filters)
         """)

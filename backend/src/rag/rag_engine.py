@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 
-from src.rag.hybrid_searcher import HybridSearcher
-from src.rag.reranker import ReRanker
-from src.rag.deep_analyzer import DeepAnalyzer
-from src.models.data_models import RetrievedContext, SynthesizedKnowledge
+from backend.src.rag.hybrid_searcher import HybridSearcher
+from backend.src.rag.reranker import ReRanker
+from backend.src.rag.deep_analyzer import DeepAnalyzer
+from backend.src.models.data_models import RetrievedContext, SynthesizedKnowledge
 
 class RAGEngine:
     """Orchestrates retrieval and knowledge synthesis."""

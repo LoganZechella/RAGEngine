@@ -13,7 +13,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 import time
 import uuid # Added import for UUID generation
 
-from src.models.data_models import EmbeddedChunk, RetrievedContext
+from backend.src.models.data_models import EmbeddedChunk, RetrievedContext
 
 
 class VectorDBManager:

@@ -12,7 +12,7 @@ import hashlib
 from pathlib import Path
 from loguru import logger
 
-from src.models.data_models import DocumentType
+from backend.src.models.data_models import DocumentType
 
 
 class DocumentSourceManager:

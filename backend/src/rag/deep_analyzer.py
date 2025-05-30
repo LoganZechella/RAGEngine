@@ -10,7 +10,7 @@ import os
 import google.generativeai as genai
 from datetime import datetime
 
-from src.models.data_models import (
+from backend.src.models.data_models import (
     RetrievedContext, SynthesizedKnowledge, KeyConcept, SynthesisInsight, 
     ResearchGap, AnalysisDepth, EvidenceQuality
 )

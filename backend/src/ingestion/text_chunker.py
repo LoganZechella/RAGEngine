@@ -23,8 +23,9 @@ try:
 except LookupError:
     nltk.download('punkt_tab', quiet=True)
 
-from src.models.data_models import ParsedDocument, TextChunk, ChunkType
-from src.ingestion.content_filter import ScientificContentFilter
+from backend.src.models.data_models import ParsedDocument, TextChunk, ChunkType
+from backend.src.models.content_types import ContentType
+from .content_filter_factory import ContentFilterFactory
 
 
 class ChunkingStrategy(str, Enum):
@@ -49,7 +50,9 @@ class TextChunker:
         max_chunk_size_tokens: int = 512,
         chunk_overlap_tokens: int = 100,
         enable_deduplication: bool = True,
-        enable_content_filtering: bool = True
+        enable_content_filtering: bool = True,
+        content_type: Optional[ContentType] = None,
+        enable_auto_detection: bool = True
     ):
         """
         Initialize the TextChunker.
@@ -60,18 +63,21 @@ class TextChunker:
             chunk_overlap_tokens: Number of tokens to overlap between chunks
             enable_deduplication: Whether to enable hash-based deduplication
             enable_content_filtering: Whether to enable content filtering
+            content_type: Specific content type for filtering, None for auto-detection
+            enable_auto_detection: Whether to enable automatic document type detection
         """
         self.strategy = strategy
         self.max_chunk_size_tokens = max_chunk_size_tokens
         self.chunk_overlap_tokens = chunk_overlap_tokens
         self.enable_deduplication = enable_deduplication
         self.enable_content_filtering = enable_content_filtering
+        self.content_type = content_type
         
-        # Initialize content filter and deduplication tracking
+        # Initialize content filter factory
         if self.enable_content_filtering:
-            self.content_filter = ScientificContentFilter()
+            self.filter_factory = ContentFilterFactory(enable_auto_detection)
         else:
-            self.content_filter = None
+            self.filter_factory = None
             
         if self.enable_deduplication:
             self.seen_hashes: Set[str] = set()
@@ -134,8 +140,13 @@ class TextChunker:
         Returns:
             MD5 hash of normalized content
         """
-        if self.content_filter:
-            return self.content_filter.get_content_hash(text)
+        if self.filter_factory:
+            # Get a content filter instance to use for hashing
+            content_filter = self.filter_factory.get_filter(
+                content_type=self.content_type,
+                document_text=text[:1000]  # First 1k chars for detection
+            )
+            return content_filter.get_content_hash(text)
         else:
             # Fallback hash generation if no content filter
             normalized = re.sub(r'\s+', ' ', text.lower().strip())
@@ -157,12 +168,21 @@ class TextChunker:
         
         unique_chunks = []
         original_count = len(chunks)
+        content_filter = None
+        
+        # Get content filter instance if filtering is enabled
+        if self.enable_content_filtering and self.filter_factory and chunks:
+            # Use first chunk's text for content type detection
+            first_chunk_text = chunks[0].text if chunks[0].text else ""
+            content_filter = self.filter_factory.get_filter(
+                content_type=self.content_type,
+                document_text=first_chunk_text[:1000]
+            )
         
         for chunk in chunks:
             # Skip if content should be filtered (if content filtering enabled)
-            if self.enable_content_filtering and self.content_filter:
-                if self.content_filter.should_skip_chunk(chunk.text):
-                    continue
+            if content_filter and content_filter.should_skip_chunk(chunk.text):
+                continue
             
             # Check for exact duplicates
             content_hash = self._get_content_hash(chunk.text)
