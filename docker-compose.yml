@@ -1,6 +1,6 @@
 # =============================================================================
 # RAGEngine Docker Compose Configuration
-# Production-ready multi-container setup
+# Production-ready multi-container setup for Breath Diagnostics
 # =============================================================================
 
 services:
@@ -9,7 +9,7 @@ services:
   # =============================================================================
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: ragengine-qdrant
+    container_name: breath-diagnostics-qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"
@@ -27,16 +27,16 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - ragengine-network
+      - breath-diagnostics-network
 
   # =============================================================================
-  # RAGEngine Backend (FastAPI)
+  # RAGEngine Backend with HTMX Frontend (Combined Service)
   # =============================================================================
-  backend:
+  web-app:
     build:
       context: .
-      dockerfile: docker/backend/Dockerfile
-    container_name: ragengine-backend
+      dockerfile: docker/web-app/Dockerfile
+    container_name: breath-diagnostics-web
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -49,7 +49,10 @@ services:
       
       # Database Configuration
       - QDRANT_URL=http://qdrant:6333
-      - COLLECTION_NAME=${COLLECTION_NAME:-knowledge_base}
+      
+      # Collection Configuration (NEW)
+      - DEFAULT_COLLECTION=current_documents
+      - AVAILABLE_COLLECTIONS=current_documents,legacy_documents,sop_policy,research_data,clinical_studies
       
       # Document Processing
       - SOURCE_DOCUMENTS_DIR=/app/documents
@@ -63,6 +66,10 @@ services:
       - TOP_K_SPARSE=${TOP_K_SPARSE:-10}
       - TOP_K_RERANK=${TOP_K_RERANK:-5}
       
+      # Content Classification (NEW)
+      - AUTO_COLLECTION_ASSIGNMENT=true
+      - ENABLE_DOCUMENT_TYPE_DETECTION=true
+      
       # System Configuration
       - TZ=${TZ:-UTC}
     secrets:
@@ -72,44 +79,16 @@ services:
       - documents_data:/app/documents
       - manifests_data:/app/config
       - logs_data:/app/logs
-    entrypoint: ["/docker/backend/entrypoint.sh"]
+    entrypoint: ["/docker/web-app/entrypoint.sh"]
     command: ["python", "run_web.py"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/system-info"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
     networks:
-      - ragengine-network
-
-  # =============================================================================
-  # RAGEngine Frontend (SvelteKit)
-  # =============================================================================
-  frontend:
-    build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
-    container_name: ragengine-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    depends_on:
-      backend:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=production
-      - TZ=${TZ:-UTC}
-    entrypoint: ["/docker/frontend/entrypoint.sh"]
-    command: ["node", "build"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks:
-      - ragengine-network
+      - breath-diagnostics-network
 
 # =============================================================================
 # Docker Secrets
@@ -137,7 +116,7 @@ volumes:
 # Custom Network
 # =============================================================================
 networks:
-  ragengine-network:
+  breath-diagnostics-network:
     driver: bridge
     ipam:
       config:

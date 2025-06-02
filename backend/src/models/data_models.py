@@ -25,6 +25,17 @@ class ChunkType(str, Enum):
     LIST = "list"
 
 
+class DocumentCollection(str, Enum):
+    """Available document collections for organization."""
+    CURRENT = "current_documents"
+    LEGACY = "legacy_documents"
+    SOP_POLICY = "sop_policy"
+    RESEARCH = "research_data"
+    CLINICAL = "clinical_studies"
+    REGULATORY = "regulatory_documents"
+    TRAINING = "training_materials"
+
+
 class AnalysisDepth(str, Enum):
     """Depth levels of analysis performed."""
     BASIC = "basic"
@@ -42,6 +53,16 @@ class EvidenceQuality(str, Enum):
     WEAK = "weak"
     INSUFFICIENT = "insufficient"
     CONFLICTING = "conflicting"
+
+
+class CollectionMetadata(BaseModel):
+    """Metadata for a document collection."""
+    collection_name: DocumentCollection
+    display_name: str
+    description: str
+    document_count: int = 0
+    last_updated: Optional[datetime] = None
+    auto_assignment_rules: List[str] = Field(default_factory=list)
 
 
 class StructuredTable(BaseModel):
@@ -82,6 +103,7 @@ class EmbeddedChunk(BaseModel):
     text: str
     embedding_vector: Optional[List[float]] = None  # Can be None if embedding failed
     chunk_type: ChunkType = ChunkType.TEXT
+    collection: DocumentCollection = DocumentCollection.CURRENT  # NEW FIELD
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -92,6 +114,7 @@ class RetrievedContext(BaseModel):
     text: str
     initial_score: float  # Score from initial hybrid search
     rerank_score: Optional[float] = None  # Score after reranking, if performed
+    collection: Optional[DocumentCollection] = None  # NEW FIELD
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

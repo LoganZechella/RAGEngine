@@ -8,10 +8,35 @@
                     <strong>Query:</strong> "{{ query }}" 
                     <span class="ml-2 px-2 py-1 bg-blue-600 rounded text-sm">{{ mode }}</span>
                 </p>
-                <p class="text-gray-400 text-sm">Found {{ results.num_results }} results</p>
+                <p class="text-gray-400 text-sm">Found {{ results.total_results or results.num_results }} results</p>
+                
+                <!-- Collection Information -->
+                {% if results.collections_searched %}
+                <div class="mt-2">
+                    <span class="text-gray-400 text-sm">Collections searched:</span>
+                    {% for collection in results.collections_searched %}
+                        <span class="ml-1 px-2 py-1 bg-gray-600 rounded text-xs">{{ collection }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
+
+    <!-- Collection Results Breakdown -->
+    {% if results.results_by_collection %}
+    <div class="bg-gray-700 rounded-lg p-4">
+        <h4 class="font-medium text-white mb-3">📊 Results by Collection</h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {% for collection, count in results.results_by_collection.items() %}
+            <div class="text-center">
+                <div class="text-lg font-semibold text-white">{{ count }}</div>
+                <div class="text-xs text-gray-400">{{ collection|replace('_', ' ')|title }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Synthesis Results -->
     {% if results.synthesis %}
@@ -164,6 +189,21 @@
                             <h4 class="font-medium text-white">
                                 {{ context.metadata.get('document_id', 'Unknown Document') }}
                             </h4>
+                            
+                            <!-- Collection Badge -->
+                            {% if context.collection %}
+                            <span class="px-2 py-1 text-xs rounded-full
+                                {% if context.collection == 'sop_policy' %}bg-blue-600
+                                {% elif context.collection == 'clinical_studies' %}bg-green-600
+                                {% elif context.collection == 'research_data' %}bg-purple-600
+                                {% elif context.collection == 'regulatory_documents' %}bg-yellow-600
+                                {% elif context.collection == 'legacy_documents' %}bg-gray-600
+                                {% elif context.collection == 'training_materials' %}bg-pink-600
+                                {% else %}bg-gray-500{% endif %}">
+                                {{ context.collection|replace('_', ' ')|title }}
+                            </span>
+                            {% endif %}
+                            
                             {% if context.rerank_score %}
                                 <div class="flex items-center space-x-2 text-sm">
                                     <span class="text-gray-400">Rerank:</span>

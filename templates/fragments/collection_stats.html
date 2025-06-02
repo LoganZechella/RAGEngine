@@ -1,0 +1,35 @@
+{% if collection_stats %}
+<div class="space-y-4">
+    {% for collection_name, stats in collection_stats.items() %}
+    <div class="bg-gray-700 rounded-lg p-4">
+        <div class="flex items-center justify-between mb-2">
+            <h5 class="font-medium text-white">{{ stats.display_name }}</h5>
+            <span class="text-xs px-2 py-1 rounded 
+                {% if stats.status == 'active' %}bg-green-600
+                {% elif stats.status == 'empty' %}bg-yellow-600
+                {% else %}bg-gray-600{% endif %}">
+                {{ stats.status|title }}
+            </span>
+        </div>
+        <p class="text-gray-400 text-sm mb-3">{{ stats.description }}</p>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+                <span class="text-gray-400">Documents:</span>
+                <span class="text-white font-medium">{{ stats.document_count }}</span>
+            </div>
+            <div>
+                <span class="text-gray-400">Vector Size:</span>
+                <span class="text-white font-medium">{{ stats.vector_size or 'N/A' }}</span>
+            </div>
+        </div>
+        {% if stats.last_updated %}
+        <div class="mt-2 text-xs text-gray-500">
+            Last updated: {{ stats.last_updated.strftime('%Y-%m-%d %H:%M') if stats.last_updated else 'Unknown' }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-sm">Loading collection statistics...</p>
+{% endif %} 

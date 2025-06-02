@@ -11,7 +11,7 @@ from backend.src.models.data_models import DocumentType
 from backend.src.models.content_types import ContentType
 
 class KnowledgeIngestion:
-    """Orchestrates document ingestion pipeline."""
+    """Orchestrates document ingestion pipeline with multi-collection support."""
     
     def __init__(
         self,
@@ -27,9 +27,15 @@ class KnowledgeIngestion:
         enable_content_filtering: bool = True,
         enable_deduplication: bool = True,
         content_type: Optional[str] = None,
-        enable_auto_detection: bool = True
+        enable_auto_detection: bool = True,
+        collection_manager: Optional[Any] = None,  # NEW: Collection manager
+        vector_db_manager: Optional[Any] = None    # NEW: Vector DB manager
     ):
         self.source_paths = source_paths
+        
+        # Store collection manager for multi-collection support
+        self.collection_manager = collection_manager
+        self.vector_db_manager = vector_db_manager
         
         # Convert string to enum if provided
         content_type_enum = None
@@ -56,12 +62,17 @@ class KnowledgeIngestion:
             api_key=openai_api_key,
             dimensions=vector_dimensions
         )
-        self.vector_db = VectorDBManager(
-            url=qdrant_url,
-            api_key=qdrant_api_key,
-            collection_name=collection_name,
-            vector_dimensions=vector_dimensions
-        )
+        
+        # Use provided vector DB manager or create default one
+        if vector_db_manager:
+            self.vector_db = vector_db_manager
+        else:
+            self.vector_db = VectorDBManager(
+                url=qdrant_url,
+                api_key=qdrant_api_key,
+                collection_name=collection_name,
+                vector_dimensions=vector_dimensions
+            )
     
     def process_documents(self) -> Dict[str, Any]:
         """Process all documents in source paths."""

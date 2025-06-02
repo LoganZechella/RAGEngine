@@ -4,7 +4,7 @@ import json
 import uuid
 import time
 import threading
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.knowledge_base_api import KnowledgeBaseAPI
+from src.api.multi_collection_knowledge_base_api import MultiCollectionKnowledgeBaseAPI
+from src.models.data_models import DocumentCollection
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -36,9 +37,9 @@ class EventSourceResponse(StreamingResponse):
         )
 
 # Initialize FastAPI app
-app = FastAPI(title="RAGEngine API")
+app = FastAPI(title="Breath Diagnostics RAGEngine API")
 
-# Configure CORS for SvelteKit frontend
+# Configure CORS
 origins = [
     "http://localhost:5173",      # SvelteKit dev server
     "http://localhost:4173",      # SvelteKit preview
@@ -48,7 +49,6 @@ origins = [
 ]
 
 # Allow Docker network ranges for development
-import os
 if os.getenv("DOCKER_ENV") == "true":
     origins.extend([
         "http://172.20.0.0/16",   # Docker network range
@@ -63,28 +63,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# FIXED: Mount static files from correct directory (working directory is root)
+# Mount static files from correct directory (working directory is root)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# FIXED: Initialize templates from correct directory (working directory is root)
+# Initialize templates from correct directory (working directory is root)
 templates = Jinja2Templates(directory="templates")
 
 # Global progress tracking
 active_tasks: Dict[str, Dict[str, Any]] = {}
-
-# Add after existing global variables
 search_tasks: Dict[str, Dict[str, Any]] = {}
 search_executor = ThreadPoolExecutor(max_workers=4)
 search_events: Dict[str, asyncio.Queue] = {}  # Event queues for SSE updates
 
-# Initialize RAGEngine API
+# Initialize Multi-Collection RAGEngine API
 def get_kb_config():
     return {
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "google_api_key": os.getenv("GOOGLE_API_KEY"),
         "qdrant_url": os.getenv("QDRANT_URL", "http://localhost:6333"),
         "qdrant_api_key": os.getenv("QDRANT_API_KEY"),
-        "collection_name": os.getenv("COLLECTION_NAME", "knowledge_base"),
+        "default_collection": os.getenv("DEFAULT_COLLECTION", "current_documents"),
         "source_paths": [os.getenv("SOURCE_DOCUMENTS_DIR", "./documents")],
         "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "hybrid_hierarchical_semantic"),
         "chunk_size_tokens": int(os.getenv("CHUNK_SIZE_TOKENS", "512")),
@@ -92,12 +90,13 @@ def get_kb_config():
         "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
         "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
         "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
-        "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))
+        "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5")),
+        "auto_collection_assignment": os.getenv("AUTO_COLLECTION_ASSIGNMENT", "true").lower() == "true"
     }
 
 try:
-    kb_api = KnowledgeBaseAPI(get_kb_config())
-    logger.info("RAGEngine API initialized successfully")
+    kb_api = MultiCollectionKnowledgeBaseAPI(get_kb_config())
+    logger.info("Multi-collection RAGEngine API initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize RAGEngine API: {e}")
     kb_api = None
@@ -171,7 +170,7 @@ async def startup_event():
 # Routes
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """Main dashboard page."""
+    """Main dashboard page with multi-collection support."""
     if not kb_api:
         return templates.TemplateResponse("error.html", {
             "request": request,
@@ -179,13 +178,30 @@ async def dashboard(request: Request):
         })
     
     try:
-        system_info = kb_api.get_system_info()
-        processed_docs = kb_api.get_processed_documents()
+        # Get collection statistics
+        collection_stats_result = kb_api.get_collection_statistics()
+        collection_stats = collection_stats_result.get("collections", {})
+        
+        # Get system information
+        system_info = {
+            "search_config": {
+                "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
+                "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "hybrid_hierarchical_semantic"),
+                "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
+                "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
+                "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))
+            },
+            "collections": {
+                "default": os.getenv("DEFAULT_COLLECTION", "current_documents"),
+                "available": os.getenv("AVAILABLE_COLLECTIONS", "").split(",") if os.getenv("AVAILABLE_COLLECTIONS") else [],
+                "auto_assignment": os.getenv("AUTO_COLLECTION_ASSIGNMENT", "true").lower() == "true"
+            }
+        }
         
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
             "system_info": system_info,
-            "doc_count": len(processed_docs),
+            "collection_stats": collection_stats,
             "api_status": "connected"
         })
     except Exception as e:
@@ -196,18 +212,28 @@ async def dashboard(request: Request):
             "api_status": "error"
         })
 
-# Add new search endpoints (replace existing @app.post("/search"))
 @app.post("/search-with-progress")
 async def search_with_progress(
     request: Request, 
     background_tasks: BackgroundTasks,
     query: str = Form(...), 
     mode: str = Form("hybrid"), 
-    synthesize: bool = Form(True)
+    synthesize: bool = Form(True),
+    collections: List[str] = Form(["all"])  # Collection selection
 ):
-    """Initiate search with progress tracking (HTMX version - returns HTML)."""
+    """Initiate search with progress tracking and collection filtering (HTMX version - returns HTML)."""
     if not kb_api:
         return HTMLResponse('<div class="text-red-500">API not available</div>')
+    
+    # Process collection selection
+    if "all" in collections or not collections:
+        selected_collections = None  # Search all collections
+    else:
+        selected_collections = []
+        for collection_name in collections:
+            collection = kb_api.collection_manager.validate_collection(collection_name)
+            if collection:
+                selected_collections.append(collection_name)
     
     # Generate unique task ID
     task_id = str(uuid.uuid4())
@@ -217,10 +243,11 @@ async def search_with_progress(
         "status": "initializing",
         "progress": 0,
         "phase": "Initializing",
-        "message": "Setting up search parameters...",
+        "message": "Setting up collection search...",
         "query": query,
         "mode": mode,
         "synthesize": synthesize,
+        "collections": selected_collections or ["all"],
         "start_time": datetime.now(),
         "estimated_completion": None,
         "current_phase": 1,
@@ -234,10 +261,10 @@ async def search_with_progress(
     # Create event queue for this task
     search_events[task_id] = asyncio.Queue()
     
-    logger.info(f"Created search task {task_id} for query: '{query}' mode: {mode}")
+    logger.info(f"Created collection search task {task_id} for collections: {selected_collections or 'all'}")
     
     # Start background search
-    background_tasks.add_task(perform_search_with_progress, task_id, query, mode, synthesize)
+    background_tasks.add_task(perform_collection_search_with_progress, task_id, query, mode, synthesize, selected_collections)
     
     # Return progress UI for HTMX
     return templates.TemplateResponse("fragments/search_progress.html", {
@@ -248,20 +275,20 @@ async def search_with_progress(
         "synthesize": synthesize
     })
 
-async def perform_search_with_progress(task_id: str, query: str, mode: str, synthesize: bool):
-    """Background task to perform search with detailed progress tracking."""
-    logger.info(f"Starting search task {task_id}")
+async def perform_collection_search_with_progress(task_id: str, query: str, mode: str, synthesize: bool, collections: Optional[List[str]]):
+    """Background task to perform search with detailed progress tracking across collections."""
+    logger.info(f"Starting collection search task {task_id} for collections: {collections or 'all'}")
     task = search_tasks[task_id]
     
     try:
         # Phase 1: Initialize (0-10%)
-        await update_search_progress(task_id, 1, 5, "Validating query parameters...")
+        await update_search_progress(task_id, 1, 5, f"Validating query across collections...")
         await asyncio.sleep(0.3)  # Simulate processing time
         
         if task["cancelled"]:
             return
         
-        await update_search_progress(task_id, 1, 10, "Search initialized successfully")
+        await update_search_progress(task_id, 1, 10, "Collection search initialized successfully")
         
         # Phase 2: Embedding Generation (10-25%) - for dense/hybrid only
         if mode in ["dense", "hybrid"]:
@@ -277,133 +304,94 @@ async def perform_search_with_progress(task_id: str, query: str, mode: str, synt
             
             await update_search_progress(task_id, 2, 25, "Query embeddings generated")
         
-        # Phase 3: Vector Search (25-45%)
-        if mode in ["dense", "hybrid"]:
-            await update_search_progress(task_id, 3, 30, "Searching vector database...")
+        # Phase 3-5: Collection Search (25-70%)
+        await update_search_progress(task_id, 3, 30, f"Searching across collections...")
+        
+        # Perform actual collection search
+        start_time = time.time()
+        try:
+            await update_search_progress(task_id, 4, 50, "Executing multi-collection search...")
             
-            # Perform actual dense search
-            start_time = time.time()
-            try:
-                if mode == "dense":
-                    results = kb_api.dense_search(query, top_k=10)
-                    results["synthesis"] = None
-                else:
-                    # For hybrid, we'll do the full search later
-                    pass
-                
-                search_time = time.time() - start_time
-                await update_search_progress(task_id, 3, 45, f"Vector search completed ({search_time:.1f}s)")
-                
-            except Exception as e:
-                task["errors"].append(f"Vector search failed: {str(e)}")
-                await update_search_progress(task_id, 3, 45, "Vector search encountered errors")
+            results = kb_api.search_collections(
+                query=query,
+                collections=collections,
+                mode=mode,
+                synthesize=synthesize
+            )
+            
+            search_time = time.time() - start_time
+            await update_search_progress(task_id, 5, 70, f"Multi-collection search completed ({search_time:.1f}s)")
+            
+        except Exception as e:
+            task["errors"].append(f"Collection search failed: {str(e)}")
+            await update_search_progress(task_id, 5, 70, "Collection search encountered errors")
+            results = {"contexts": [], "total_results": 0, "collections_searched": collections or []}
         
-        # Phase 4: Keyword Search (45-60%) - hybrid only
-        if mode == "hybrid":
-            await update_search_progress(task_id, 4, 50, "Performing keyword search...")
-            await asyncio.sleep(0.6)  # Simulate keyword search
-            await update_search_progress(task_id, 4, 60, "Keyword search completed")
-        
-        # Phase 5: Result Fusion (60-70%) - hybrid only
-        if mode == "hybrid":
-            await update_search_progress(task_id, 5, 65, "Combining search results...")
-            await asyncio.sleep(0.3)
-            await update_search_progress(task_id, 5, 70, "Results combined using RRF")
-        
-        # For hybrid mode, perform the actual search now
-        if mode == "hybrid":
-            await update_search_progress(task_id, 5, 70, "Executing hybrid search...")
-            try:
-                results = kb_api.search(query, synthesize=False)  # Without synthesis for now
-            except Exception as e:
-                task["errors"].append(f"Hybrid search failed: {str(e)}")
-                results = {"contexts": [], "num_results": 0}
-        elif mode == "sparse":
-            await update_search_progress(task_id, 3, 45, "Performing sparse search...")
-            try:
-                results = kb_api.sparse_search(query, top_k=10)
-                results["synthesis"] = None
-            except Exception as e:
-                task["errors"].append(f"Sparse search failed: {str(e)}")
-                results = {"contexts": [], "num_results": 0}
-        
-        # Phase 6: Re-ranking (70-85%) - if results exist
+        # Phase 6: Post-processing (70-85%)
         if results.get("contexts") and len(results["contexts"]) > 0:
-            await update_search_progress(task_id, 6, 75, "Re-ranking results for relevance...")
+            await update_search_progress(task_id, 6, 75, "Post-processing results...")
             
-            # Simulate re-ranking time (actual re-ranking already happened in kb_api.search)
-            for i in range(4):
+            # Simulate post-processing time
+            for i in range(3):
+                if task["cancelled"]:
+                    return
+                await asyncio.sleep(0.3)
+                progress = 75 + (i + 1) * 3
+                await update_search_progress(task_id, 6, progress, f"Analyzing relevance... ({i+1}/3)")
+            
+            await update_search_progress(task_id, 6, 85, f"Post-processing completed - {len(results['contexts'])} results")
+        else:
+            await update_search_progress(task_id, 6, 85, "No results found in selected collections")
+        
+        # Phase 7: Knowledge Synthesis (85-95%) - if requested and results exist
+        if synthesize and results.get("synthesized_knowledge"):
+            await update_search_progress(task_id, 7, 88, "Performing knowledge synthesis...")
+            
+            # Synthesis already done in search_collections, just simulate progress
+            for i in range(3):
                 if task["cancelled"]:
                     return
                 await asyncio.sleep(0.5)
-                progress = 75 + (i + 1) * 2
-                await update_search_progress(task_id, 6, progress, f"Analyzing relevance... ({i+1}/4)")
+                progress = 88 + (i + 1) * 2
+                await update_search_progress(task_id, 7, progress, f"Synthesizing knowledge... ({i+1}/3)")
             
-            await update_search_progress(task_id, 6, 85, f"Re-ranking completed ({len(results['contexts'])} results)")
-        else:
-            await update_search_progress(task_id, 6, 85, "No results to re-rank")
-        
-        # Phase 7: Knowledge Synthesis (85-95%) - if enabled
-        if synthesize and results.get("contexts"):
-            await update_search_progress(task_id, 7, 87, "Initializing AI analysis...")
-            
-            try:
-                # Perform synthesis
-                await update_search_progress(task_id, 7, 90, "Generating knowledge synthesis...")
-                synthesis_results = kb_api.search(query, synthesize=True)
-                results["synthesis"] = synthesis_results.get("synthesis")
-                
-                await update_search_progress(task_id, 7, 95, "Knowledge synthesis completed")
-                
-            except Exception as e:
-                task["errors"].append(f"Knowledge synthesis failed: {str(e)}")
-                await update_search_progress(task_id, 7, 95, "Synthesis failed, continuing...")
+            await update_search_progress(task_id, 7, 95, "Knowledge synthesis completed")
         elif synthesize:
-            await update_search_progress(task_id, 7, 95, "No content available for synthesis")
+            await update_search_progress(task_id, 7, 95, "Synthesis skipped (no results)")
+        else:
+            await update_search_progress(task_id, 7, 95, "Synthesis not requested")
         
         # Phase 8: Finalize (95-100%)
-        await update_search_progress(task_id, 8, 97, "Finalizing results...")
+        await update_search_progress(task_id, 8, 98, "Finalizing results...")
         await asyncio.sleep(0.2)
         
-        # FIXED: Store results and mark completion properly
+        # Store results
         task["results"] = results
-        task["completion_time"] = datetime.now()
-        
-        # Update status AFTER results are stored
         task["status"] = "completed"
         task["progress"] = 100
-        task["phase"] = "Completed"
-        task["message"] = f"Search completed! Found {results.get('num_results', 0)} results"
-        task["estimated_completion"] = datetime.now()
+        task["message"] = f"Search completed! Found {results.get('total_results', 0)} results"
+        task["completion_time"] = datetime.now()
         
-        logger.info(f"Search task {task_id} completed successfully with {results.get('num_results', 0)} results")
+        # Calculate estimated completion time for future reference
+        total_time = (task["completion_time"] - task["start_time"]).total_seconds()
+        task["total_time"] = total_time
         
-        # Notify completion
-        if task_id in search_events:
-            try:
-                await search_events[task_id].put("complete")
-            except Exception as e:
-                logger.error(f"Failed to notify completion for task {task_id}: {e}")
+        logger.info(f"Collection search task {task_id} completed successfully in {total_time:.1f}s")
         
-        # Schedule cleanup after a delay to allow results to be retrieved
-        asyncio.create_task(cleanup_completed_task(task_id, delay=30))
+        # Clean up after delay
+        asyncio.create_task(cleanup_completed_task(task_id, delay=60))
         
+    except asyncio.CancelledError:
+        task["status"] = "cancelled"
+        task["message"] = "Search was cancelled by user"
+        task["completion_time"] = datetime.now()
+        logger.info(f"Collection search task {task_id} was cancelled")
     except Exception as e:
-        logger.error(f"Search task {task_id} failed: {e}")
+        logger.error(f"Collection search task {task_id} failed: {e}")
         task["status"] = "error"
         task["message"] = f"Search failed: {str(e)}"
         task["errors"].append(str(e))
         task["completion_time"] = datetime.now()
-        
-        # Notify error
-        if task_id in search_events:
-            try:
-                await search_events[task_id].put("error")
-            except Exception as e:
-                logger.error(f"Failed to notify error for task {task_id}: {e}")
-        
-        # Schedule cleanup for failed tasks too
-        asyncio.create_task(cleanup_completed_task(task_id, delay=10))
 
 async def cleanup_completed_task(task_id: str, delay: int = 30):
     """Clean up completed task after a delay."""
@@ -442,14 +430,6 @@ async def update_search_progress(task_id: str, phase: int, progress: int, messag
             logger.debug(f"Progress update queued for task {task_id}: {progress}% - {message}")
         except Exception as e:
             logger.error(f"Failed to notify SSE listeners for task {task_id}: {e}")
-    else:
-        logger.warning(f"No event queue found for task {task_id} - creating one")
-        search_events[task_id] = asyncio.Queue()
-        try:
-            await search_events[task_id].put("update")
-            logger.debug(f"Created queue and sent update for task {task_id}: {progress}% - {message}")
-        except Exception as e:
-            logger.error(f"Failed to create queue and notify for task {task_id}: {e}")
 
 def get_phase_name(phase: int) -> str:
     """Get human-readable phase name."""
@@ -512,7 +492,7 @@ async def search_progress_stream(task_id: str):
                         logger.info(f"Cleaned up event queue for completed task {task_id}")
                     return
             
-            # FIXED: Better completion handling
+            # Better completion handling
             last_progress = -1
             last_message = ""
             max_iterations = 200  # Prevent infinite loops (200 * 0.5s = 100s max)
@@ -541,7 +521,7 @@ async def search_progress_stream(task_id: str):
                         last_progress = task["progress"]
                         last_message = task["message"]
                     
-                    # FIXED: End stream only when task is truly complete
+                    # End stream only when task is truly complete
                     if task["status"] in ["completed", "error", "cancelled"] and task["progress"] >= 100:
                         data = prepare_progress_data(task)
                         yield f"event: complete\ndata: {json.dumps(data)}\n\n"
@@ -555,6 +535,7 @@ async def search_progress_stream(task_id: str):
                         
                     # Prevent excessive polling
                     await asyncio.sleep(0.5)
+                    iteration += 1
                         
                 except Exception as inner_e:
                     logger.error(f"Inner SSE loop error for task {task_id}: {inner_e}")
@@ -609,7 +590,6 @@ async def cancel_search(task_id: str):
         return HTMLResponse('<div class="text-yellow-500">Search cancelled</div>')
     return HTMLResponse('<div class="text-red-500">Search not found</div>')
 
-# FIXED: Improved result retrieval to prevent race conditions
 @app.get("/search-results/{task_id}")
 async def get_search_results(request: Request, task_id: str):
     """Get the final search results (HTMX version - returns HTML)."""
@@ -634,11 +614,11 @@ async def get_search_results(request: Request, task_id: str):
     query = task["query"]
     mode = task["mode"]
     
-    # FIXED: Mark as retrieved but don't delete immediately
+    # Mark as retrieved but don't delete immediately
     task["results_retrieved"] = True
     task["results_retrieved_time"] = datetime.now()
     
-    logger.info(f"Returning results for task {task_id}: {results.get('num_results', 0)} results")
+    logger.info(f"Returning results for task {task_id}: {results.get('total_results', 0)} results")
     
     return templates.TemplateResponse("fragments/search_results.html", {
         "request": request,
@@ -647,175 +627,78 @@ async def get_search_results(request: Request, task_id: str):
         "mode": mode
     })
 
-@app.get("/api/search-results/{task_id}")
-async def api_get_search_results(task_id: str):
-    """Get the final search results (SvelteKit version - returns JSON)."""
-    if task_id not in search_tasks:
-        raise HTTPException(status_code=404, detail="Search not found")
-    
-    task = search_tasks[task_id]
-    if task["status"] != "completed" or not task.get("results"):
-        raise HTTPException(status_code=202, detail="Results not ready")
-    
-    # Get results without cleaning up task (let background cleanup handle it)
-    results = task["results"]
-    query = task["query"]
-    mode = task["mode"]
-    
-    return {
-        "results": results,
-        "query": query,
-        "mode": mode,
-        "task_id": task_id,
-        "status": "completed"
-    }
-
-# JSON API Endpoints for SvelteKit Frontend
-
-@app.post("/api/search-with-progress")
-async def api_search_with_progress(
-    background_tasks: BackgroundTasks,
-    query: str = Form(...), 
-    mode: str = Form("hybrid"), 
-    synthesize: bool = Form(True)
-):
-    """Initiate search with progress tracking (SvelteKit version - returns JSON)."""
+@app.get("/collection-stats")
+async def collection_stats(request: Request):
+    """Get collection statistics as HTML fragment."""
     if not kb_api:
-        raise HTTPException(status_code=503, detail="API not available")
-    
-    # Generate unique task ID
-    task_id = str(uuid.uuid4())
-    
-    # Initialize search tracking
-    search_tasks[task_id] = {
-        "status": "initializing",
-        "progress": 0,
-        "phase": "Initializing",
-        "message": "Setting up search parameters...",
-        "query": query,
-        "mode": mode,
-        "synthesize": synthesize,
-        "start_time": datetime.now(),
-        "estimated_completion": None,
-        "current_phase": 1,
-        "total_phases": 8 if mode == "hybrid" and synthesize else (6 if synthesize else 4),
-        "errors": [],
-        "cancelled": False,
-        "results": None,
-        "results_retrieved": False
-    }
-    
-    # Create event queue for this task
-    search_events[task_id] = asyncio.Queue()
-    
-    logger.info(f"Created search task {task_id} for query: '{query}' mode: {mode} (SvelteKit)")
-    
-    # Start background search
-    background_tasks.add_task(perform_search_with_progress, task_id, query, mode, synthesize)
-    
-    # Return JSON response with task ID
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "query": query,
-        "mode": mode,
-        "synthesize": synthesize
-    }
-
-@app.post("/api/search")
-async def api_search(
-    query: str = Form(...),
-    mode: str = Form("hybrid"),
-    synthesize: bool = Form(True)
-):
-    """JSON API endpoint for search functionality."""
-    if not kb_api:
-        raise HTTPException(status_code=503, detail="API not available")
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     try:
-        logger.info(f"API search request - Query: '{query}', Mode: {mode}, Synthesize: {synthesize}")
+        stats_result = kb_api.get_collection_statistics()
+        stats = stats_result.get("collections", {})
         
-        if mode == "dense":
-            results = kb_api.dense_search(query, top_k=10)
-            if synthesize and results.get("contexts"):
-                # Add synthesis for dense search
-                full_results = kb_api.search(query, synthesize=True)
-                results["synthesis"] = full_results.get("synthesis")
-        elif mode == "sparse":
-            results = kb_api.sparse_search(query, top_k=10)
-            if synthesize and results.get("contexts"):
-                # Add synthesis for sparse search
-                full_results = kb_api.search(query, synthesize=True)
-                results["synthesis"] = full_results.get("synthesis")
-        else:  # hybrid
-            results = kb_api.search(query, synthesize=synthesize)
-        
-        # Ensure consistent response format
-        if "contexts" not in results:
-            results["contexts"] = []
-        if "num_results" not in results:
-            results["num_results"] = len(results.get("contexts", []))
-        
-        # Transform contexts to match frontend expectations
-        transformed_contexts = []
-        for ctx in results.get("contexts", []):
-            transformed_ctx = {
-                "content": ctx.get("text", ""),
-                "score": ctx.get("score", ctx.get("rerank_score", ctx.get("initial_score", 0))),
-                "metadata": {
-                    "filename": ctx.get("metadata", {}).get("filename", "Unknown"),
-                    "page": ctx.get("metadata", {}).get("page"),
-                    "chunk_id": ctx.get("chunk_id"),
-                    **ctx.get("metadata", {})
-                }
-            }
-            transformed_contexts.append(transformed_ctx)
-        
-        results["contexts"] = transformed_contexts
-        
-        logger.info(f"Search completed - Found {results['num_results']} results")
-        return results
-        
+        return templates.TemplateResponse("collection_stats.html", {
+            "request": request,
+            "collection_stats": stats
+        })
     except Exception as e:
-        logger.error(f"Search API error: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        logger.error(f"Collection stats error: {e}")
+        return HTMLResponse(f'<div class="text-red-500">Stats error: {str(e)}</div>')
 
-@app.post("/upload")
-async def upload_files(
+@app.post("/collection/{collection_name}/clear")
+async def clear_collection(request: Request, collection_name: str):
+    """Clear a specific collection."""
+    if not kb_api:
+        return HTMLResponse('<div class="text-red-500">API not available</div>')
+    
+    try:
+        result = await kb_api.clear_collection(collection_name)
+        
+        if result.get("status") == "success":
+            return HTMLResponse(f'<div class="text-green-600">Collection {collection_name} cleared successfully</div>')
+        else:
+            return HTMLResponse(f'<div class="text-red-600">Failed to clear collection: {result.get("error", "Unknown error")}</div>')
+            
+    except Exception as e:
+        return HTMLResponse(f'<div class="text-red-500">Clear failed: {str(e)}</div>')
+
+@app.post("/upload-to-collection")
+async def upload_to_collection(
     request: Request,
     background_tasks: BackgroundTasks,
-    files: list[UploadFile] = File(...)
+    files: list[UploadFile] = File(...),
+    target_collection: str = Form("")
 ):
-    """Handle file uploads with background processing."""
+    """Upload files with collection assignment."""
     if not kb_api:
         return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     task_id = str(uuid.uuid4())
     
-    # Initialize task tracking
     active_tasks[task_id] = {
         "status": "starting",
         "progress": 0,
-        "message": "Preparing upload...",
+        "message": "Preparing collection upload...",
         "files": [f.filename for f in files],
+        "target_collection": target_collection or "auto-classify",
         "start_time": datetime.now(),
         "errors": []
     }
     
     # Start background processing
-    background_tasks.add_task(process_uploaded_files, task_id, files)
+    background_tasks.add_task(process_collection_upload, task_id, files, target_collection)
     
     return templates.TemplateResponse("fragments/upload_progress.html", {
         "request": request,
         "task_id": task_id
     })
 
-async def process_uploaded_files(task_id: str, files: list[UploadFile]):
-    """Background task to process uploaded files."""
+async def process_collection_upload(task_id: str, files: list[UploadFile], target_collection: str):
+    """Process uploads with collection assignment."""
     task = active_tasks[task_id]
     
     try:
-        # Save uploaded files
+        # Save files
         saved_files = []
         upload_dir = "./uploaded_documents"
         os.makedirs(upload_dir, exist_ok=True)
@@ -831,50 +714,57 @@ async def process_uploaded_files(task_id: str, files: list[UploadFile]):
                 f.write(content)
             saved_files.append(file_path)
             
-            progress = 10 + (i + 1) / len(files) * 20  # 10-30% for saving
+            progress = 10 + (i + 1) / len(files) * 20
             task["progress"] = progress
             task["message"] = f"Saved {file.filename}"
         
-        # Process documents
+        # Process with collection assignment
         task["status"] = "processing"
-        task["message"] = "Processing documents..."
+        task["message"] = "Processing documents with collection assignment..."
         task["progress"] = 30
         
         total_processed = 0
-        total_errors = 0
+        collection_assignments = {}
         
         for i, file_path in enumerate(saved_files):
             try:
                 task["message"] = f"Processing {os.path.basename(file_path)}..."
-                stats = kb_api.ingest_single_document(file_path)
                 
-                if stats["errors"]:
-                    task["errors"].extend(stats["errors"])
-                    total_errors += 1
-                else:
+                # Use enhanced ingestion method
+                result = await kb_api.ingest_document_to_collection(
+                    file_path=file_path,
+                    target_collection=target_collection if target_collection else None,
+                    auto_classify=not target_collection
+                )
+                
+                if result.get("status") == "success":
+                    assigned_collection = result.get("collection", "unknown")
+                    collection_assignments[os.path.basename(file_path)] = assigned_collection
                     total_processed += 1
+                else:
+                    task["errors"].append(f"Failed to process {os.path.basename(file_path)}: {result.get('error', 'Unknown error')}")
                 
             except Exception as e:
                 error_msg = f"Failed to process {os.path.basename(file_path)}: {str(e)}"
                 task["errors"].append(error_msg)
-                total_errors += 1
             
-            # Update progress (30-90% for processing)
             progress = 30 + (i + 1) / len(saved_files) * 60
             task["progress"] = progress
         
         # Complete
         task["status"] = "completed"
         task["progress"] = 100
-        task["message"] = f"Completed! Processed {total_processed} files successfully"
-        if total_errors > 0:
-            task["message"] += f", {total_errors} errors"
+        task["message"] = f"Completed! Processed {total_processed} files"
+        task["collection_assignments"] = collection_assignments
+        
+        if task["errors"]:
+            task["message"] += f", {len(task['errors'])} errors"
         
     except Exception as e:
         task["status"] = "error"
         task["message"] = f"Upload failed: {str(e)}"
         task["errors"].append(str(e))
-        logger.error(f"Upload processing error: {e}")
+        logger.error(f"Collection upload processing error: {e}")
 
 @app.get("/progress/{task_id}")
 async def progress_stream(task_id: str):
@@ -904,96 +794,39 @@ async def progress_stream(task_id: str):
     
     return EventSourceResponse(event_generator())
 
-# FIXED: HTMX endpoints now return HTML instead of JSON
 @app.get("/system-info")
 async def system_info(request: Request):
-    """Get system information as HTML for HTMX (was returning JSON)."""
+    """Get system information as HTML for HTMX."""
     if not kb_api:
         return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     try:
-        info = kb_api.get_system_info()
+        # Get system health status
+        health_status = kb_api.vector_db.get_health_status()
+        
+        system_info = {
+            "search_config": {
+                "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
+                "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "hybrid_hierarchical_semantic"),
+                "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
+                "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
+                "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))
+            },
+            "collections": {
+                "default": os.getenv("DEFAULT_COLLECTION", "current_documents"),
+                "available": os.getenv("AVAILABLE_COLLECTIONS", "").split(",") if os.getenv("AVAILABLE_COLLECTIONS") else [],
+                "auto_assignment": os.getenv("AUTO_COLLECTION_ASSIGNMENT", "true").lower() == "true"
+            },
+            "health": health_status
+        }
+        
         return templates.TemplateResponse("fragments/system_info.html", {
             "request": request,
-            "system_info": info
+            "system_info": system_info
         })
     except Exception as e:
         logger.error(f"System info error: {e}")
         return HTMLResponse(f'<div class="text-red-500">System info error: {str(e)}</div>')
-
-@app.get("/documents")
-async def document_list(request: Request):
-    """Get processed documents list as HTML for HTMX (was returning JSON)."""
-    if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
-    
-    try:
-        docs = kb_api.get_processed_documents()
-        return templates.TemplateResponse("fragments/document_list.html", {
-            "request": request,
-            "documents": docs
-        })
-    except Exception as e:
-        logger.error(f"Document list error: {e}")
-        return HTMLResponse(f'<div class="text-red-500">Document list error: {str(e)}</div>')
-
-# JSON API versions for SvelteKit frontend
-@app.get("/api/system-info")
-async def api_system_info():
-    """Get system information as JSON for SvelteKit."""
-    if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
-    
-    try:
-        info = kb_api.get_system_info()
-        return templates.TemplateResponse("fragments/system_info.html", {
-            "request": request,
-            "system_info": info
-        })
-    except Exception as e:
-        logger.error(f"System info error: {e}")
-        return HTMLResponse(f'<div class="text-red-500">System info error: {str(e)}</div>')
-
-@app.get("/documents")
-async def document_list(request: Request):
-    """Get processed documents list as rendered HTML fragment."""
-    if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
-    
-    try:
-        docs = kb_api.get_processed_documents()
-        return templates.TemplateResponse("fragments/document_list.html", {
-            "request": request,
-            "documents": docs
-        })
-    except Exception as e:
-        logger.error(f"Document list error: {e}")
-        return HTMLResponse(f'<div class="text-red-500">Document list error: {str(e)}</div>')
-
-@app.post("/collection/{action}")
-async def collection_action(request: Request, action: str):
-    """Handle collection management actions."""
-    if not kb_api:
-        return HTMLResponse('<div class="text-red-500">API not available</div>')
-    
-    try:
-        if action == "clear":
-            success = kb_api.clear_collection()
-            message = "Collection cleared successfully" if success else "Failed to clear collection"
-        elif action == "delete":
-            success = kb_api.delete_collection()
-            message = "Collection deleted successfully" if success else "Failed to delete collection"
-        elif action == "recreate":
-            success = kb_api.recreate_collection()
-            message = "Collection recreated successfully" if success else "Failed to recreate collection"
-        else:
-            return HTMLResponse('<div class="text-red-500">Invalid action</div>')
-        
-        status_class = "text-green-600" if success else "text-red-600"
-        return HTMLResponse(f'<div class="{status_class}">{message}</div>')
-        
-    except Exception as e:
-        return HTMLResponse(f'<div class="text-red-500">Action failed: {str(e)}</div>')
 
 @app.get("/favicon.ico")
 async def favicon():

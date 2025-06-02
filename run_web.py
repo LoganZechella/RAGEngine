@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-RAGEngine Web Interface Launcher
+Breath Diagnostics RAGEngine Web Interface Launcher
+Multi-Collection Knowledge Base System
 """
 
 import os
@@ -37,10 +38,12 @@ def main():
         logger.warning("GOOGLE_API_KEY not set. Knowledge synthesis will not be available.")
         print("⚠️  GOOGLE_API_KEY not set. Knowledge synthesis will not be available.")
     
-    print("🚀 Starting RAGEngine Web Interface...")
+    print("🚀 Starting Breath Diagnostics Knowledge Base...")
     print("📍 Dashboard will be available at: http://localhost:8080")
-    print("🔧 Configuration:")
-    print(f"   • Collection: {os.getenv('COLLECTION_NAME', 'knowledge_base')}")
+    print("🔧 Multi-Collection Configuration:")
+    print(f"   • Default Collection: {os.getenv('DEFAULT_COLLECTION', 'current_documents')}")
+    print(f"   • Available Collections: {os.getenv('AVAILABLE_COLLECTIONS', 'current_documents,legacy_documents,sop_policy')}")
+    print(f"   • Auto-Classification: {os.getenv('AUTO_COLLECTION_ASSIGNMENT', 'true')}")
     print(f"   • Qdrant URL: {os.getenv('QDRANT_URL', 'http://localhost:6333')}")
     print(f"   • Documents: {os.getenv('SOURCE_DOCUMENTS_DIR', './documents')}")
     print("\n💡 Press Ctrl+C to stop the server")
@@ -54,7 +57,7 @@ def main():
             log_level="info"
         )
     except KeyboardInterrupt:
-        print("\n👋 RAGEngine Web Interface stopped")
+        print("\n👋 Breath Diagnostics Knowledge Base stopped")
     except Exception as e:
         logger.error(f"Failed to start web server: {e}")
         print(f"❌ Failed to start web server: {e}")
