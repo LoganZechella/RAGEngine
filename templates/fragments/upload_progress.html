@@ -15,8 +15,13 @@
                        set data to JSON.parse(event.data)
                        set my style.width to data.progress + '%'
                        if data.progress >= 100
-                         add .bg-green-600 to me
-                         remove .bg-blue-600 from me
+                         if data.status == 'error'
+                           add .bg-red-600 to me
+                           remove .bg-blue-600 from me
+                         else
+                           add .bg-green-600 to me
+                           remove .bg-blue-600 from me
+                         end
                        end"
                 ></div>
             </div>
@@ -45,13 +50,6 @@
             hx-trigger="sse:message"
             _="on sse:message 
                set data to JSON.parse(event.data)
-               if data.errors and data.errors.length > 0
-                 set errorHtml to ''
-                 for error in data.errors
-                   set errorHtml to errorHtml + '<div class=\"text-red-400 text-xs mt-1\">⚠️ ' + error + '</div>'
-                 end
-                 put errorHtml after me
-               end
                if data.status == 'completed'
                  add .text-green-400 to me
                  put '✅ ' + data.message into me
@@ -63,6 +61,44 @@
                end"
         >
             Preparing upload...
+        </div>
+        
+        <!-- Collection Assignments (shown on completion) -->
+        <div 
+            class="collection-assignments hidden text-sm"
+            hx-sse="swap:message"
+            hx-trigger="sse:message"
+            _="on sse:message 
+               set data to JSON.parse(event.data)
+               if data.status == 'completed' and data.collection_assignments
+                 set html to '<div class=\"bg-gray-800 rounded p-3 mt-2\"><h5 class=\"text-white font-medium mb-2\">📁 Document Assignments:</h5>'
+                 for file in Object.keys(data.collection_assignments)
+                   set collection to data.collection_assignments[file]
+                   set html to html + '<div class=\"text-xs text-gray-300 mb-1\"><span class=\"text-blue-400\">' + file + '</span> → <span class=\"text-green-400\">' + collection + '</span></div>'
+                 end
+                 set html to html + '</div>'
+                 put html into me
+                 remove .hidden from me
+               end"
+        >
+        </div>
+        
+        <!-- Error Messages -->
+        <div 
+            class="error-messages text-sm"
+            hx-sse="swap:message"
+            hx-trigger="sse:message"
+            _="on sse:message 
+               set data to JSON.parse(event.data)
+               if data.errors and data.errors.length > 0
+                 set errorHtml to '<div class=\"bg-red-900 bg-opacity-50 rounded p-3 mt-2\"><h5 class=\"text-red-300 font-medium mb-2\">⚠️ Errors:</h5>'
+                 for error in data.errors
+                   set errorHtml to errorHtml + '<div class=\"text-red-400 text-xs mb-1\">• ' + error + '</div>'
+                 end
+                 set errorHtml to errorHtml + '</div>'
+                 put errorHtml into me
+               end"
+        >
         </div>
     </div>
 </div>

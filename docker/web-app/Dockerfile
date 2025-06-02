@@ -1,5 +1,5 @@
 # Multi-stage build for optimized production image
-FROM python:3.12 AS base
+FROM python:3.13-slim AS base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -28,6 +28,11 @@ RUN chmod +x /docker/web-app/entrypoint.sh
 
 # Create necessary directories
 RUN mkdir -p documents config logs /docker/web-app
+
+# Create upload directory within documents volume
+RUN mkdir -p documents/uploads && \
+    chmod 755 documents && \
+    chmod 755 documents/uploads
 
 # Set Python path
 ENV PYTHONPATH=/app/backend

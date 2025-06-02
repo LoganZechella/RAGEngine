@@ -7,6 +7,7 @@ import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File, Form, HTTPException
 from fastapi.templating import Jinja2Templates
@@ -14,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.multi_collection_knowledge_base_api import MultiCollectionKnowledgeBaseAPI
+from backend.src.api.multi_collection_knowledge_base_api import MultiCollectionKnowledgeBaseAPI
 from src.models.data_models import DocumentCollection
 from dotenv import load_dotenv
 from loguru import logger
@@ -685,40 +686,82 @@ async def upload_to_collection(
         "errors": []
     }
     
-    # Start background processing
-    background_tasks.add_task(process_collection_upload, task_id, files, target_collection)
+    try:
+        # Read and save files synchronously to prevent I/O closed errors
+        uploaded_file_paths = []
+        upload_dir = "/app/documents/uploads"  # Use mounted volume directory
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        active_tasks[task_id]["status"] = "saving"
+        active_tasks[task_id]["message"] = "Saving uploaded files..."
+        active_tasks[task_id]["progress"] = 5
+        
+        for i, file in enumerate(files):
+            if not file.filename:
+                continue
+            
+            # Validate file type
+            allowed_extensions = ['.pdf', '.txt', '.html', '.htm', '.md']
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in allowed_extensions:
+                error_msg = f"Unsupported file type {file_ext} for {file.filename}. Allowed: {', '.join(allowed_extensions)}"
+                logger.warning(error_msg)
+                active_tasks[task_id]["errors"].append(error_msg)
+                continue
+                
+            # Generate safe filename
+            safe_filename = f"{uuid.uuid4().hex}_{file.filename}"
+            file_path = os.path.join(upload_dir, safe_filename)
+            
+            try:
+                # Read file content while request is still active
+                content = await file.read()
+                
+                # Write to disk
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                
+                uploaded_file_paths.append(file_path)
+                logger.info(f"Successfully saved uploaded file: {file.filename} -> {file_path}")
+                
+                # Update progress
+                progress = 5 + (i + 1) / len(files) * 15
+                active_tasks[task_id]["progress"] = progress
+                active_tasks[task_id]["message"] = f"Saved {file.filename}"
+                
+            except Exception as e:
+                error_msg = f"Failed to save {file.filename}: {str(e)}"
+                logger.error(error_msg)
+                active_tasks[task_id]["errors"].append(error_msg)
+        
+        if not uploaded_file_paths:
+            active_tasks[task_id]["status"] = "error"
+            active_tasks[task_id]["message"] = "No files were successfully uploaded"
+            return templates.TemplateResponse("fragments/upload_progress.html", {
+                "request": request,
+                "task_id": task_id
+            })
+        
+        # Start background processing with file paths (not file objects)
+        background_tasks.add_task(process_collection_upload, task_id, uploaded_file_paths, target_collection)
+        
+    except Exception as e:
+        error_msg = f"Upload preparation failed: {str(e)}"
+        logger.error(error_msg)
+        active_tasks[task_id]["status"] = "error"
+        active_tasks[task_id]["message"] = error_msg
+        active_tasks[task_id]["errors"].append(error_msg)
     
     return templates.TemplateResponse("fragments/upload_progress.html", {
         "request": request,
         "task_id": task_id
     })
 
-async def process_collection_upload(task_id: str, files: list[UploadFile], target_collection: str):
+async def process_collection_upload(task_id: str, file_paths: list[str], target_collection: str):
     """Process uploads with collection assignment."""
     task = active_tasks[task_id]
     
     try:
-        # Save files
-        saved_files = []
-        upload_dir = "./uploaded_documents"
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        task["status"] = "saving"
-        task["message"] = "Saving uploaded files..."
-        task["progress"] = 10
-        
-        for i, file in enumerate(files):
-            file_path = os.path.join(upload_dir, file.filename)
-            with open(file_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
-            saved_files.append(file_path)
-            
-            progress = 10 + (i + 1) / len(files) * 20
-            task["progress"] = progress
-            task["message"] = f"Saved {file.filename}"
-        
-        # Process with collection assignment
         task["status"] = "processing"
         task["message"] = "Processing documents with collection assignment..."
         task["progress"] = 30
@@ -726,29 +769,58 @@ async def process_collection_upload(task_id: str, files: list[UploadFile], targe
         total_processed = 0
         collection_assignments = {}
         
-        for i, file_path in enumerate(saved_files):
+        for i, file_path in enumerate(file_paths):
             try:
-                task["message"] = f"Processing {os.path.basename(file_path)}..."
+                filename = os.path.basename(file_path)
+                task["message"] = f"Processing {filename}..."
                 
-                # Use enhanced ingestion method
-                result = await kb_api.ingest_document_to_collection(
-                    file_path=file_path,
-                    target_collection=target_collection if target_collection else None,
-                    auto_classify=not target_collection
-                )
+                # Use the correct ingestion method that actually exists
+                if hasattr(kb_api, 'ingest_document_to_collection'):
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        kb_api.ingest_document_to_collection,
+                        file_path,
+                        target_collection if target_collection else None,
+                        not target_collection  # auto_classify
+                    )
+                else:
+                    # Fallback to base ingestion method
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        kb_api.ingest_single_document,
+                        file_path
+                    )
+                    result = {
+                        "status": "success" if not result.get("errors") else "error",
+                        "collection": target_collection or "current_documents",
+                        "file_path": file_path,
+                        "chunks_processed": result.get("chunks_created", 0),
+                        "errors": result.get("errors", [])
+                    }
                 
                 if result.get("status") == "success":
                     assigned_collection = result.get("collection", "unknown")
-                    collection_assignments[os.path.basename(file_path)] = assigned_collection
+                    collection_assignments[filename] = assigned_collection
                     total_processed += 1
+                    logger.info(f"Successfully processed {filename} -> {assigned_collection}")
                 else:
-                    task["errors"].append(f"Failed to process {os.path.basename(file_path)}: {result.get('error', 'Unknown error')}")
+                    error_msg = f"Failed to process {filename}: {result.get('error', 'Unknown error')}"
+                    task["errors"].append(error_msg)
+                    logger.error(error_msg)
+                
+                # Clean up uploaded file after processing
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Cleaned up temporary file: {file_path}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup {file_path}: {cleanup_error}")
                 
             except Exception as e:
                 error_msg = f"Failed to process {os.path.basename(file_path)}: {str(e)}"
                 task["errors"].append(error_msg)
+                logger.error(error_msg)
             
-            progress = 30 + (i + 1) / len(saved_files) * 60
+            progress = 30 + (i + 1) / len(file_paths) * 60
             task["progress"] = progress
         
         # Complete
@@ -759,12 +831,26 @@ async def process_collection_upload(task_id: str, files: list[UploadFile], targe
         
         if task["errors"]:
             task["message"] += f", {len(task['errors'])} errors"
+            if total_processed == 0:
+                task["status"] = "error"
+                task["message"] = "All files failed to process"
+        
+        logger.info(f"Upload task {task_id} completed: {total_processed} files processed")
         
     except Exception as e:
         task["status"] = "error"
-        task["message"] = f"Upload failed: {str(e)}"
+        task["message"] = f"Upload processing failed: {str(e)}"
         task["errors"].append(str(e))
         logger.error(f"Collection upload processing error: {e}")
+        
+        # Clean up any remaining files on error
+        for file_path in file_paths:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Cleaned up file after error: {file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup {file_path} after error: {cleanup_error}")
 
 @app.get("/progress/{task_id}")
 async def progress_stream(task_id: str):
