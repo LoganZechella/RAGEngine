@@ -36,8 +36,11 @@
                     </div>
                     <p class="text-gray-400 text-sm mb-3">{{ stats.description }}</p>
                     <div class="flex justify-between items-center text-sm">
-                        <span class="text-blue-400">{{ stats.document_count }} docs</span>
-                        {% if stats.status == 'green' %}
+                        <div class="text-blue-400">
+                            <div>{{ stats.document_count }} docs</div>
+                            <div class="text-xs text-gray-400">{{ stats.chunk_count }} chunks</div>
+                        </div>
+                        {% if stats.status == 'active' %}
                             <span class="text-green-400">✅ Active</span>
                         {% else %}
                             <span class="text-yellow-400">⚠️ {{ stats.status }}</span>
@@ -137,7 +140,7 @@
             <!-- File Upload with Collection Assignment -->
             <div>
                 <h4 class="font-medium text-white mb-3">📁 Upload Documents</h4>
-                <form hx-post="/upload-to-collection" hx-target="#upload-status" hx-encoding="multipart/form-data" class="space-y-4">
+                <form id="upload-form" hx-post="/upload-to-collection" hx-target="#upload-status" hx-encoding="multipart/form-data" hx-swap="innerHTML" class="space-y-4">
                     <div class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
                         <input type="file" name="files" multiple accept=".pdf,.txt,.html" class="hidden" id="file-input">
                         <label for="file-input" class="cursor-pointer">
@@ -157,7 +160,7 @@
                             {% endif %}
                         </select>
                         
-                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition-colors">
+                        <button type="submit" id="upload-button" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition-colors">
                             Upload & Process
                         </button>
                     </div>
@@ -338,6 +341,51 @@ document.addEventListener('DOMContentLoaded', function() {
                 const fileText = files.length === 1 ? files[0].name : `${files.length} files selected`;
                 label.querySelector('p').textContent = fileText;
             }
+        });
+    }
+    
+    // Upload form handling
+    const uploadForm = document.getElementById('upload-form');
+    const uploadButton = document.getElementById('upload-button');
+    const uploadStatus = document.getElementById('upload-status');
+    
+    if (uploadForm) {
+        uploadForm.addEventListener('htmx:beforeRequest', function(event) {
+            // Close any existing SSE connection before starting new upload
+            if (window.currentUploadEventSource) {
+                window.currentUploadEventSource.close();
+                window.currentUploadEventSource = null;
+            }
+            
+            // Clear previous upload status
+            uploadStatus.innerHTML = '';
+            
+            // Disable upload button and show loading state
+            uploadButton.disabled = true;
+            uploadButton.textContent = 'Uploading...';
+            uploadButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+            uploadButton.classList.add('bg-gray-600');
+        });
+        
+        uploadForm.addEventListener('htmx:afterRequest', function(event) {
+            // Re-enable upload button after request completes
+            setTimeout(() => {
+                uploadButton.disabled = false;
+                uploadButton.textContent = 'Upload & Process';
+                uploadButton.classList.remove('bg-gray-600');
+                uploadButton.classList.add('bg-green-600', 'hover:bg-green-700');
+            }, 1000);
+        });
+        
+        uploadForm.addEventListener('htmx:responseError', function(event) {
+            // Handle upload errors
+            uploadStatus.innerHTML = '<div class="text-red-400 text-sm">❌ Upload failed. Please try again.</div>';
+            
+            // Re-enable button immediately on error
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload & Process';
+            uploadButton.classList.remove('bg-gray-600');
+            uploadButton.classList.add('bg-green-600', 'hover:bg-green-700');
         });
     }
 });

@@ -170,27 +170,92 @@ class MultiCollectionKnowledgeBaseAPI:
             
             # Combine stats with display information
             enhanced_stats = {}
+            total_documents = 0
+            total_chunks = 0
+            
             for collection in DocumentCollection:
                 collection_name = collection.value
                 raw_stats = stats.get(collection_name, {})
                 display_info = collection_info.get(collection, {})
                 
+                points_count = raw_stats.get("points_count", 0)
+                
+                # Get unique document count for this collection
+                document_count = self._get_unique_document_count(collection_name)
+                
+                # Determine status based on points and errors
+                if raw_stats.get("error"):
+                    status = "error"
+                elif points_count > 0:
+                    status = "green"  # Template expects 'green' for active
+                else:
+                    status = "empty"  # Could be 'yellow' for warning if desired
+                
                 enhanced_stats[collection_name] = {
                     "display_name": display_info.get("display_name", collection_name),
                     "description": display_info.get("description", ""),
-                    "document_count": raw_stats.get("points_count", 0),
+                    "document_count": document_count,      # Actual unique documents
+                    "chunk_count": points_count,           # Number of chunks/points in the collection
+                    "vector_count": points_count,          # Same as chunk count since each chunk has one vector
                     "vector_size": raw_stats.get("vector_size"),
-                    "status": "active" if raw_stats.get("points_count", 0) > 0 else "empty"
+                    "status": status,
+                    "last_updated": None,  # Could be enhanced to track this
+                    "error": raw_stats.get("error")
                 }
+                
+                total_documents += document_count
+                total_chunks += points_count
             
             return {
                 "collections": enhanced_stats,
                 "total_collections": len(enhanced_stats),
-                "total_documents": sum(s.get("document_count", 0) for s in enhanced_stats.values())
+                "total_documents": total_documents,        # Sum of unique documents across all collections
+                "total_chunks": total_chunks,              # Sum of all chunks across all collections
+                "total_vectors": total_chunks              # Same as total chunks
             }
         except Exception as e:
             logger.error(f"Error getting collection statistics: {e}")
             return {"error": str(e), "collections": {}}
+    
+    def _get_unique_document_count(self, collection_name: str) -> int:
+        """Get the count of unique documents in a collection."""
+        try:
+            # Use Qdrant's aggregation feature to count unique document_ids
+            from qdrant_client.http import models as qmodels
+            
+            # Scroll through all points and collect unique document_ids
+            unique_docs = set()
+            offset = None
+            
+            while True:
+                try:
+                    result, next_offset = self.vector_db.client.scroll(
+                        collection_name=collection_name,
+                        limit=100,  # Process in batches
+                        offset=offset,
+                        with_payload=["document_id"],
+                        with_vectors=False  # We don't need vectors
+                    )
+                    
+                    for point in result:
+                        if point.payload and "document_id" in point.payload:
+                            unique_docs.add(point.payload["document_id"])
+                    
+                    if next_offset is None:
+                        break
+                    offset = next_offset
+                    
+                except Exception as e:
+                    logger.warning(f"Error scrolling collection {collection_name}: {e}")
+                    # If we can't scroll, return 0
+                    return 0
+            
+            return len(unique_docs)
+            
+        except Exception as e:
+            logger.error(f"Error getting unique document count for {collection_name}: {e}")
+            # Fallback: return 0 if we can't count documents
+            return 0
     
     def ingest_document_to_collection(
         self,
@@ -223,14 +288,13 @@ class MultiCollectionKnowledgeBaseAPI:
             else:
                 collection = DocumentCollection.CURRENT
             
-            # Process the document
-            stats = self.ingestion.process_single_document(file_path)
+            logger.info(f"Document {file_path} assigned to collection: {collection.value}")
             
-            # Update chunks with collection assignment
-            if stats.get("chunks_created", 0) > 0:
-                # This would need enhancement in the ingestion process
-                # to properly assign collections to chunks
-                pass
+            # Process the document with collection assignment
+            stats = self.ingestion.process_single_document_to_collection(
+                file_path=file_path,
+                target_collection=collection
+            )
             
             return {
                 "status": "success" if not stats.get("errors") else "error",
@@ -272,6 +336,139 @@ class MultiCollectionKnowledgeBaseAPI:
                 "error": str(e)
             }
     
+    def dense_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Perform dense vector search only."""
+        try:
+            query_embedding = self.embedding_generator.generate_embedding(query)
+            contexts = self.vector_db.dense_vector_search(
+                query_embedding=query_embedding,
+                top_k=top_k,
+                filters=filters
+            )
+            
+            return {
+                "query": query,
+                "search_type": "dense",
+                "num_results": len(contexts),
+                "contexts": [
+                    {
+                        "chunk_id": ctx.chunk_id,
+                        "document_id": ctx.document_id,
+                        "text": ctx.text,
+                        "initial_score": ctx.initial_score,
+                        "collection": ctx.collection.value if ctx.collection else None,
+                        "metadata": ctx.metadata
+                    }
+                    for ctx in contexts
+                ]
+            }
+        except Exception as e:
+            logger.error(f"Dense search error: {e}")
+            return {"error": str(e), "query": query, "num_results": 0, "contexts": []}
+
+    def sparse_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Perform sparse keyword search only."""
+        try:
+            # For sparse search, we'll use the RAG engine's sparse search if available
+            if hasattr(self.rag, 'sparse_search_only'):
+                contexts = self.rag.sparse_search_only(query, top_k, filters)
+            else:
+                # Fallback to dense search
+                logger.warning("Sparse search not available, falling back to dense search")
+                return self.dense_search(query, top_k, filters)
+            
+            return {
+                "query": query,
+                "search_type": "sparse",
+                "num_results": len(contexts),
+                "contexts": [
+                    {
+                        "chunk_id": ctx.chunk_id,
+                        "document_id": ctx.document_id,
+                        "text": ctx.text,
+                        "initial_score": ctx.initial_score,
+                        "collection": ctx.collection.value if ctx.collection else None,
+                        "metadata": ctx.metadata
+                    }
+                    for ctx in contexts
+                ]
+            }
+        except Exception as e:
+            logger.error(f"Sparse search error: {e}")
+            return {"error": str(e), "query": query, "num_results": 0, "contexts": []}
+
+    def get_processed_documents(self) -> Dict[str, Any]:
+        """Get information about processed documents."""
+        try:
+            if hasattr(self.ingestion, 'document_manager'):
+                return self.ingestion.document_manager.get_processed_documents()
+            else:
+                # Fallback - return empty dict for now
+                logger.warning("Document manager not available in ingestion system")
+                return {}
+        except Exception as e:
+            logger.error(f"Error getting processed documents: {e}")
+            return {}
+
+    def delete_collection(self) -> bool:
+        """Delete the vector database collection."""
+        try:
+            success = True
+            for collection in DocumentCollection:
+                collection_success = self.vector_db.delete_collection_data(collection)
+                if not collection_success:
+                    success = False
+                    logger.error(f"Failed to delete collection: {collection.value}")
+            return success
+        except Exception as e:
+            logger.error(f"Error deleting collections: {e}")
+            return False
+
+    def recreate_collection(self) -> bool:
+        """Delete and recreate all collections with fresh configuration."""
+        try:
+            # Delete all collections
+            delete_success = self.delete_collection()
+            if not delete_success:
+                logger.warning("Some collections failed to delete during recreation")
+            
+            # Recreate collections
+            self.vector_db._ensure_all_collections_exist()
+            logger.info("All collections recreated successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error recreating collections: {e}")
+            return False
+
+    def delete_document(self, document_id: str) -> int:
+        """Delete all chunks for a specific document across all collections."""
+        try:
+            total_deleted = 0
+            for collection in DocumentCollection:
+                try:
+                    # Use collection-specific deletion if available
+                    deleted_count = self.vector_db.delete_by_document_id(collection.value, document_id)
+                    total_deleted += deleted_count
+                    logger.info(f"Deleted {deleted_count} chunks from {collection.value}")
+                except Exception as e:
+                    logger.error(f"Error deleting from collection {collection.value}: {e}")
+            
+            logger.info(f"Total deleted {total_deleted} chunks for document {document_id}")
+            return total_deleted
+        except Exception as e:
+            logger.error(f"Error deleting document {document_id}: {e}")
+            return 0
+
     # Backward compatibility methods
     def search(self, query: str, **kwargs) -> Dict[str, Any]:
         """Backward compatible search method."""
@@ -282,8 +479,71 @@ class MultiCollectionKnowledgeBaseAPI:
         return self.ingestion.process_documents()
     
     def get_system_info(self) -> Dict[str, Any]:
-        """Get system information."""
-        return {
-            "collections": self.get_collection_statistics(),
-            "config": self.config
-        }
+        """Get comprehensive system information including all collections."""
+        try:
+            # Get collection statistics
+            collection_stats = self.get_collection_statistics()
+            
+            # Get detailed vector DB info for default collection
+            default_collection_info = {}
+            try:
+                default_info = self.vector_db.client.get_collection(self.vector_db.default_collection.value)
+                default_collection_info = {
+                    "collection_name": self.vector_db.default_collection.value,
+                    "points_count": default_info.points_count,
+                    "vector_size": default_info.config.params.vectors.size,
+                    "distance": str(default_info.config.params.vectors.distance),
+                    "indexed_vectors_count": default_info.vectors_count,
+                    "name": self.vector_db.default_collection.value
+                }
+            except Exception as e:
+                logger.warning(f"Could not get detailed vector DB info: {e}")
+                default_collection_info = {
+                    "collection_name": self.vector_db.default_collection.value,
+                    "points_count": 0,
+                    "vector_size": self.config.get("vector_dimensions", 1536),
+                    "distance": "cosine",
+                    "name": self.vector_db.default_collection.value
+                }
+            
+            # Build comprehensive system info
+            return {
+                "config": {
+                    "collection_name": self.vector_db.default_collection.value,
+                    "chunking_strategy": self.config.get("chunking_strategy"),
+                    "vector_dimensions": self.config.get("vector_dimensions"),
+                    "source_paths": self.config.get("source_paths", []),
+                    "enable_content_filtering": self.config.get("enable_content_filtering", True),
+                    "enable_document_type_detection": self.config.get("enable_document_type_detection", True),
+                    "default_content_type": self.config.get("default_content_type", "auto")
+                },
+                "collections": collection_stats,
+                "ingestion": {
+                    "max_chunk_size_tokens": self.config.get("chunk_size_tokens", 512),
+                    "chunk_overlap_tokens": self.config.get("chunk_overlap_tokens", 100),
+                    "chunking_strategy": self.config.get("chunking_strategy")
+                },
+                "rag_engine": {
+                    "hybrid_searcher": {
+                        "top_k_dense": self.config.get("top_k_dense", 10),
+                        "top_k_sparse": self.config.get("top_k_sparse", 10),
+                        "rrf_k": 60  # Reciprocal rank fusion constant
+                    },
+                    "reranker": {
+                        "model": "o4-mini" if self.config.get("openai_api_key") else None,
+                        "api_available": bool(self.config.get("openai_api_key"))
+                    } if hasattr(self.rag, 'reranker') else None,
+                    "deep_analyzer": {
+                        "model": "gemini-2.5-pro-preview" if self.config.get("google_api_key") else None,
+                        "api_available": bool(self.config.get("google_api_key"))
+                    } if hasattr(self.rag, 'deep_analyzer') else None
+                },
+                "vector_db": default_collection_info
+            }
+        except Exception as e:
+            logger.error(f"Error getting system info: {e}")
+            return {
+                "config": self.config,
+                "collections": self.get_collection_statistics(),
+                "error": str(e)
+            }

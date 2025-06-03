@@ -19,7 +19,7 @@ from loguru import logger
 # Load environment
 load_dotenv()
 
-from backend.src.api.knowledge_base_api import KnowledgeBaseAPI
+from backend.src.api.multi_collection_knowledge_base_api import MultiCollectionKnowledgeBaseAPI
 from backend.src.models.content_types import ContentType
 from backend.src.ingestion.document_type_detector import DocumentTypeDetector
 from backend.src.ingestion.content_filter_factory import ContentFilterFactory
@@ -224,7 +224,7 @@ class InteractiveRAGShell(cmd.Cmd):
                 "google_api_key": os.getenv("GOOGLE_API_KEY"),
                 "qdrant_url": os.getenv("QDRANT_URL", "http://localhost:6333"),
                 "qdrant_api_key": os.getenv("QDRANT_API_KEY"),
-                "collection_name": os.getenv("QDRANT_COLLECTION_NAME", "knowledge_base"),
+                "default_collection": os.getenv("DEFAULT_COLLECTION", "current_documents"),
                 "source_paths": [os.getenv("SOURCE_DOCUMENTS_DIR", "./documents")],
                 "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "paragraph"),
                 "chunk_size_tokens": int(os.getenv("CHUNK_SIZE_TOKENS", "512")),
@@ -233,6 +233,7 @@ class InteractiveRAGShell(cmd.Cmd):
                 "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
                 "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
                 "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5")),
+                "auto_collection_assignment": os.getenv("AUTO_COLLECTION_ASSIGNMENT", "true").lower() == "true",
                 
                 # Content filtering configuration
                 "enable_content_filtering": os.getenv("ENABLE_CONTENT_FILTERING", "true").lower() == "true",
@@ -255,7 +256,7 @@ class InteractiveRAGShell(cmd.Cmd):
             if not config["google_api_key"]:
                 print("⚠️  Warning: GOOGLE_API_KEY not set. Knowledge synthesis will not be available.")
             
-            self.kb_api = KnowledgeBaseAPI(config)
+            self.kb_api = MultiCollectionKnowledgeBaseAPI(config)
             self.config = config
             
             print("✅ RAGEngine initialized successfully with enhanced content filtering!")
@@ -726,7 +727,7 @@ class InteractiveRAGShell(cmd.Cmd):
         print(f"\n⚙️ RAGEngine Configuration:")
         print("=" * 60)
         print(f"Vector DB URL: {self.config['qdrant_url']}")
-        print(f"Collection: {self.config['collection_name']}")
+        print(f"Collection: {self.config['default_collection']}")
         print(f"Vector Dimensions: {self.config['vector_dimensions']}")
         print(f"Chunking Strategy: {self.config['chunking_strategy']}")
         print(f"Chunk Size: {self.config['chunk_size_tokens']} tokens")

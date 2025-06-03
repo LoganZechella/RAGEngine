@@ -18,6 +18,14 @@
                 <span class="text-white font-medium">{{ stats.document_count }}</span>
             </div>
             <div>
+                <span class="text-gray-400">Chunks:</span>
+                <span class="text-white font-medium">{{ stats.chunk_count }}</span>
+            </div>
+            <div>
+                <span class="text-gray-400">Vectors:</span>
+                <span class="text-white font-medium">{{ stats.vector_count }}</span>
+            </div>
+            <div>
                 <span class="text-gray-400">Vector Size:</span>
                 <span class="text-white font-medium">{{ stats.vector_size or 'N/A' }}</span>
             </div>
@@ -25,6 +33,11 @@
         {% if stats.last_updated %}
         <div class="mt-2 text-xs text-gray-500">
             Last updated: {{ stats.last_updated.strftime('%Y-%m-%d %H:%M') if stats.last_updated else 'Unknown' }}
+        </div>
+        {% endif %}
+        {% if stats.error %}
+        <div class="mt-2 text-xs text-red-400">
+            Error: {{ stats.error }}
         </div>
         {% endif %}
     </div>

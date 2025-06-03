@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.api.multi_collection_knowledge_base_api import MultiCollectionKnowledgeBaseAPI
-from src.models.data_models import DocumentCollection
+from backend.src.models.data_models import DocumentCollection
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -855,28 +855,63 @@ async def process_collection_upload(task_id: str, file_paths: list[str], target_
 @app.get("/progress/{task_id}")
 async def progress_stream(task_id: str):
     """Server-Sent Events endpoint for progress updates."""
+    
+    # Check if task exists
+    if task_id not in active_tasks:
+        # Return immediate completion for non-existent tasks
+        async def empty_generator():
+            yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found', 'progress': 0, 'errors': ['Task not found']})}\n\n"
+        return EventSourceResponse(empty_generator())
+    
     async def event_generator():
-        while task_id in active_tasks:
-            task = active_tasks[task_id]
-            
-            # Send progress update
-            data = {
-                "progress": task["progress"],
-                "status": task["status"],
-                "message": task["message"],
-                "errors": task["errors"]
+        sent_completion = False
+        try:
+            while task_id in active_tasks and not sent_completion:
+                task = active_tasks[task_id]
+                
+                # Prepare progress data
+                data = {
+                    "progress": task.get("progress", 0),
+                    "status": task.get("status", "starting"),
+                    "message": task.get("message", "Starting..."),
+                    "errors": task.get("errors", [])
+                }
+                
+                # Add collection assignments if completed
+                if task.get("status") == "completed" and "collection_assignments" in task:
+                    data["collection_assignments"] = task["collection_assignments"]
+                
+                # Send the update
+                yield f"data: {json.dumps(data)}\n\n"
+                
+                # Check if task is completed
+                if task.get("status") in ["completed", "error"]:
+                    sent_completion = True
+                    # Give client time to receive final update before cleanup
+                    await asyncio.sleep(2)
+                    
+                    # Clean up the task
+                    if task_id in active_tasks:
+                        logger.info(f"Cleaning up completed upload task: {task_id}")
+                        del active_tasks[task_id]
+                    break
+                
+                # Wait before next update
+                await asyncio.sleep(0.5)
+                
+        except asyncio.CancelledError:
+            logger.info(f"SSE connection cancelled for task {task_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error in SSE generator for task {task_id}: {e}")
+            # Send error and cleanup
+            error_data = {
+                "status": "error",
+                "message": f"Connection error: {str(e)}",
+                "progress": 0,
+                "errors": [str(e)]
             }
-            
-            yield f"data: {json.dumps(data)}\n\n"
-            
-            # Clean up completed tasks after sending final update
-            if task["status"] in ["completed", "error"]:
-                await asyncio.sleep(1)  # Give client time to receive final update
-                if task_id in active_tasks:
-                    del active_tasks[task_id]
-                break
-            
-            await asyncio.sleep(0.5)  # Update every 500ms
+            yield f"data: {json.dumps(error_data)}\n\n"
     
     return EventSourceResponse(event_generator())
 
@@ -887,24 +922,8 @@ async def system_info(request: Request):
         return HTMLResponse('<div class="text-red-500">API not available</div>')
     
     try:
-        # Get system health status
-        health_status = kb_api.vector_db.get_health_status()
-        
-        system_info = {
-            "search_config": {
-                "vector_dimensions": int(os.getenv("VECTOR_DIMENSIONS", "1536")),
-                "chunking_strategy": os.getenv("CHUNKING_STRATEGY", "hybrid_hierarchical_semantic"),
-                "top_k_dense": int(os.getenv("TOP_K_DENSE", "10")),
-                "top_k_sparse": int(os.getenv("TOP_K_SPARSE", "10")),
-                "top_k_rerank": int(os.getenv("TOP_K_RERANK", "5"))
-            },
-            "collections": {
-                "default": os.getenv("DEFAULT_COLLECTION", "current_documents"),
-                "available": os.getenv("AVAILABLE_COLLECTIONS", "").split(",") if os.getenv("AVAILABLE_COLLECTIONS") else [],
-                "auto_assignment": os.getenv("AUTO_COLLECTION_ASSIGNMENT", "true").lower() == "true"
-            },
-            "health": health_status
-        }
+        # Use the enhanced get_system_info method from MultiCollectionKnowledgeBaseAPI
+        system_info = kb_api.get_system_info()
         
         return templates.TemplateResponse("fragments/system_info.html", {
             "request": request,
@@ -923,8 +942,9 @@ async def favicon():
 async def debug_search_tasks():
     """Debug endpoint to check active search tasks."""
     return {
-        "active_tasks": list(search_tasks.keys()),
-        "task_details": {task_id: {
+        "active_search_tasks": list(search_tasks.keys()),
+        "active_upload_tasks": list(active_tasks.keys()),
+        "search_task_details": {task_id: {
             "status": task["status"],
             "progress": task["progress"],
             "phase": task.get("phase", "Unknown"),
@@ -932,23 +952,36 @@ async def debug_search_tasks():
             "start_time": task["start_time"].isoformat(),
             "elapsed_seconds": (datetime.now() - task["start_time"]).total_seconds()
         } for task_id, task in search_tasks.items()},
+        "upload_task_details": {task_id: {
+            "status": task["status"],
+            "progress": task["progress"],
+            "message": task["message"],
+            "start_time": task["start_time"].isoformat(),
+            "elapsed_seconds": (datetime.now() - task["start_time"]).total_seconds(),
+            "files": task.get("files", []),
+            "target_collection": task.get("target_collection", "unknown"),
+            "errors": len(task.get("errors", []))
+        } for task_id, task in active_tasks.items()},
         "event_queues": list(search_events.keys())
     }
 
 @app.post("/debug/clear-tasks")
 async def clear_all_tasks():
     """Debug endpoint to clear all stuck tasks."""
-    cleared_tasks = list(search_tasks.keys())
+    cleared_search_tasks = list(search_tasks.keys())
+    cleared_upload_tasks = list(active_tasks.keys())
     cleared_events = list(search_events.keys())
     
     search_tasks.clear()
+    active_tasks.clear()
     search_events.clear()
     
-    logger.info(f"Cleared {len(cleared_tasks)} tasks and {len(cleared_events)} event queues")
+    logger.info(f"Cleared {len(cleared_search_tasks)} search tasks, {len(cleared_upload_tasks)} upload tasks, and {len(cleared_events)} event queues")
     
     return {
-        "message": f"Cleared {len(cleared_tasks)} tasks and {len(cleared_events)} event queues",
-        "cleared_tasks": cleared_tasks,
+        "message": f"Cleared {len(cleared_search_tasks)} search tasks, {len(cleared_upload_tasks)} upload tasks, and {len(cleared_events)} event queues",
+        "cleared_search_tasks": cleared_search_tasks,
+        "cleared_upload_tasks": cleared_upload_tasks,
         "cleared_events": cleared_events
     }
 

@@ -50,10 +50,7 @@ services:
       # Collection Configuration
       - DEFAULT_COLLECTION=current_documents
       - AVAILABLE_COLLECTIONS=current_documents,legacy_documents,sop_policy,research_data,clinical_studies
-      
-      # API Keys (Set these before running)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    
       
       # Document Processing
       - SOURCE_DOCUMENTS_DIR=/app/documents
@@ -107,3 +104,12 @@ volumes:
 networks:
   breath-diagnostics-network:
     driver: bridge 
+
+# =============================================================================
+# Docker Secrets
+# =============================================================================
+secrets:
+  openai_api_key:
+    file: ./secrets/openai_api_key.txt
+  google_api_key:
+    file: ./secrets/google_api_key.txt

@@ -336,34 +336,59 @@ class MultiCollectionVectorDBManager:
         return info
     
     def delete_collection_data(self, collection: DocumentCollection) -> bool:
-        """Delete all data from a specific collection."""
-        try:
-            return self._clear_collection(collection.value)
-        except Exception as e:
-            logger.error(f"Error deleting collection '{collection.value}': {e}")
-            return False
+        """Clear all data from a collection."""
+        return self._clear_collection(collection.value)
     
     def _clear_collection(self, collection_name: str) -> bool:
         """Clear all points from a collection."""
         try:
-            # Delete all points in the collection
-            self.client.delete(
+            # Get all point IDs
+            points, _ = self.client.scroll(
+                collection_name=collection_name,
+                limit=10000,  # Large number to get all points
+                with_payload=False,
+                with_vectors=False
+            )
+            
+            if points:
+                point_ids = [point.id for point in points]
+                self.client.delete(
+                    collection_name=collection_name,
+                    points_selector=qmodels.PointIdsList(points=point_ids)
+                )
+                logger.info(f"Cleared {len(point_ids)} points from collection '{collection_name}'")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing collection '{collection_name}': {str(e)}")
+            return False
+
+    def delete_by_document_id(self, collection_name: str, document_id: str) -> int:
+        """Delete all chunks for a specific document from a collection."""
+        try:
+            # Delete points matching the document_id
+            result = self.client.delete(
                 collection_name=collection_name,
                 points_selector=qmodels.FilterSelector(
                     filter=qmodels.Filter(
                         must=[
                             qmodels.FieldCondition(
                                 key="document_id",
-                                match=qmodels.MatchExcept(except_="__non_existent_document__")
+                                match=qmodels.MatchValue(value=document_id)
                             )
                         ]
                     )
                 )
             )
             
-            logger.info(f"Successfully cleared collection '{collection_name}'")
-            return True
-            
+            # Return count of deleted points
+            if hasattr(result, 'operation_id'):
+                # For async operations, we can't get the exact count
+                logger.info(f"Initiated deletion of document {document_id} from {collection_name}")
+                return 1  # Assume at least 1 was deleted
+            else:
+                return getattr(result, 'points_count', 1)
+                
         except Exception as e:
-            logger.error(f"Error clearing collection '{collection_name}': {str(e)}")
-            return False 
+            logger.error(f"Error deleting document {document_id} from {collection_name}: {e}")
+            return 0 

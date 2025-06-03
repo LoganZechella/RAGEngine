@@ -3,7 +3,7 @@
     <div>
         <h5 class="font-semibold text-white mb-2">Collection Info</h5>
         <div class="space-y-1 text-gray-300">
-            <p><strong>Name:</strong> {{ system_info.vector_db.name or "Unknown" }}</p>
+            <p><strong>Name:</strong> {{ system_info.vector_db.name or system_info.vector_db.collection_name or "Unknown" }}</p>
             <p><strong>Points:</strong> {{ "{:,}".format(system_info.vector_db.points_count) if system_info.vector_db.points_count else "0" }}</p>
             <p><strong>Vector Size:</strong> {{ system_info.vector_db.vector_size or "Unknown" }}</p>
         </div>
@@ -13,7 +13,7 @@
         <h5 class="font-semibold text-white mb-2">Configuration</h5>
         <div class="space-y-1 text-gray-300">
             <p><strong>Chunking:</strong> {{ system_info.config.chunking_strategy }}</p>
-            <p><strong>Chunk Size:</strong> {{ system_info.ingestion.max_chunk_size_tokens }} tokens</p>
+            <p><strong>Chunk Size:</strong> {{ system_info.ingestion.max_chunk_size_tokens or system_info.config.chunk_size_tokens or "512" }} tokens</p>
             <p><strong>Vector Dimensions:</strong> {{ system_info.config.vector_dimensions }}</p>
         </div>
     </div>
@@ -21,19 +21,30 @@
     <div>
         <h5 class="font-semibold text-white mb-2">RAG Engine</h5>
         <div class="space-y-1 text-gray-300">
-            {% if system_info.rag_engine.reranker %}
-                <p><strong>Reranker:</strong> ✅ {{ system_info.rag_engine.reranker.model }}</p>
+            {% if system_info.rag_engine and system_info.rag_engine.reranker %}
+                <p><strong>Reranker:</strong> {% if system_info.rag_engine.reranker.api_available %}✅ {{ system_info.rag_engine.reranker.model }}{% else %}❌ Not available{% endif %}</p>
             {% else %}
                 <p><strong>Reranker:</strong> ❌ Not available</p>
             {% endif %}
             
-            {% if system_info.rag_engine.deep_analyzer %}
-                <p><strong>Analyzer:</strong> ✅ {{ system_info.rag_engine.deep_analyzer.model }}</p>
+            {% if system_info.rag_engine and system_info.rag_engine.deep_analyzer %}
+                <p><strong>Analyzer:</strong> {% if system_info.rag_engine.deep_analyzer.api_available %}✅ {{ system_info.rag_engine.deep_analyzer.model }}{% else %}❌ Not available{% endif %}</p>
             {% else %}
                 <p><strong>Analyzer:</strong> ❌ Not available</p>
             {% endif %}
         </div>
     </div>
+    
+    {% if system_info.collections %}
+    <div>
+        <h5 class="font-semibold text-white mb-2">Collections</h5>
+        <div class="space-y-1 text-gray-300">
+            {% for collection_name, stats in system_info.collections.collections.items() %}
+                <p><strong>{{ stats.display_name }}:</strong> {{ stats.document_count }} docs</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% else %}
 <p class="text-gray-400 text-sm">System information not available</p>

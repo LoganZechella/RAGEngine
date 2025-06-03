@@ -26,3 +26,6 @@ log/
 
 documents/*
 secrets/*
+
+.env.docker.example
+

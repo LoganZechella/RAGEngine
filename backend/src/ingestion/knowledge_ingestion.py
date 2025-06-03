@@ -169,6 +169,71 @@ class KnowledgeIngestion:
         
         return stats
     
+    def process_single_document_to_collection(
+        self, 
+        file_path: str, 
+        target_collection: Any
+    ) -> Dict[str, Any]:
+        """Process a single document and assign to specific collection."""
+        stats = {
+            "documents_processed": 0,
+            "chunks_created": 0,
+            "embeddings_generated": 0,
+            "errors": []
+        }
+        
+        try:
+            # Create document info
+            doc_info = {
+                "document_id": os.path.basename(file_path),
+                "source_path": file_path,
+                "document_type": self._infer_document_type(file_path),
+                "metadata": {}
+            }
+            
+            # Parse document
+            if doc_info["document_type"] == DocumentType.PDF:
+                parsed = self.pdf_parser.parse_pdf(doc_info["source_path"])
+            else:
+                logger.warning(f"Unsupported type: {doc_info['document_type']}")
+                return stats
+            
+            # Chunk document (TextChunk objects - no collection field)
+            chunks = self.text_chunker.chunk_document(parsed)
+            stats["chunks_created"] += len(chunks)
+            
+            # Generate embeddings (creates EmbeddedChunk objects with collection field)
+            embedded = self.embedding_generator.generate_embeddings(chunks)
+            stats["embeddings_generated"] += len(embedded)
+            
+            # Assign collection to embedded chunks (EmbeddedChunk has collection field)
+            for embedded_chunk in embedded:
+                embedded_chunk.collection = target_collection
+            
+            # Store in vector database with explicit collection assignment
+            if hasattr(self.vector_db, 'upsert_embeddings'):
+                # Use multi-collection manager
+                upsert_results = self.vector_db.upsert_embeddings(
+                    embedded, 
+                    target_collection=target_collection
+                )
+                logger.info(f"Upserted to collections: {upsert_results}")
+            else:
+                # Fallback for single collection manager
+                self.vector_db.upsert_embeddings(embedded)
+            
+            # Mark as processed
+            self.document_manager.mark_document_processed(doc_info["source_path"])
+            stats["documents_processed"] += 1
+            
+            logger.info(f"Successfully processed {file_path} to collection {target_collection.value}")
+            
+        except Exception as e:
+            logger.error(f"Error processing {file_path} to collection {target_collection}: {e}")
+            stats["errors"].append(str(e))
+        
+        return stats
+    
     def _infer_document_type(self, file_path: str) -> DocumentType:
         """Infer document type from file extension."""
         ext = os.path.splitext(file_path)[1].lower()

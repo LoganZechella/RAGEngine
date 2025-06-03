@@ -1,4 +1,4 @@
-<div class="bg-gray-700 rounded-lg p-4" hx-ext="sse" hx-sse="connect:/progress/{{ task_id }}">
+<div class="bg-gray-700 rounded-lg p-4" id="upload-progress-container">
     <h4 class="font-semibold text-white mb-3">📤 Upload Progress</h4>
     
     <div class="space-y-3">
@@ -6,101 +6,170 @@
         <div class="relative">
             <div class="w-full bg-gray-600 rounded-full h-2">
                 <div 
+                    id="progress-bar-{{ task_id }}"
                     class="bg-blue-600 h-2 rounded-full progress-bar transition-all duration-300" 
                     style="width: 0%"
-                    hx-sse="swap:message"
-                    hx-swap="none"
-                    hx-trigger="sse:message"
-                    _="on sse:message 
-                       set data to JSON.parse(event.data)
-                       set my style.width to data.progress + '%'
-                       if data.progress >= 100
-                         if data.status == 'error'
-                           add .bg-red-600 to me
-                           remove .bg-blue-600 from me
-                         else
-                           add .bg-green-600 to me
-                           remove .bg-blue-600 from me
-                         end
-                       end"
                 ></div>
             </div>
             <div class="flex justify-between text-sm text-gray-400 mt-1">
-                <span 
-                    hx-sse="swap:message"
-                    hx-trigger="sse:message"
-                    _="on sse:message 
-                       set data to JSON.parse(event.data)
-                       put data.message into me"
-                >Preparing...</span>
-                <span 
-                    hx-sse="swap:message"
-                    hx-trigger="sse:message"
-                    _="on sse:message 
-                       set data to JSON.parse(event.data)
-                       put data.progress + '%' into me"
-                >0%</span>
+                <span id="progress-message-{{ task_id }}">Preparing...</span>
+                <span id="progress-percent-{{ task_id }}">0%</span>
             </div>
         </div>
         
         <!-- Status Messages -->
         <div 
+            id="status-message-{{ task_id }}"
             class="text-sm text-gray-300"
-            hx-sse="swap:message"
-            hx-trigger="sse:message"
-            _="on sse:message 
-               set data to JSON.parse(event.data)
-               if data.status == 'completed'
-                 add .text-green-400 to me
-                 put '✅ ' + data.message into me
-               else if data.status == 'error'
-                 add .text-red-400 to me
-                 put '❌ ' + data.message into me
-               else
-                 put '⏳ ' + data.message into me
-               end"
         >
             Preparing upload...
         </div>
         
         <!-- Collection Assignments (shown on completion) -->
         <div 
+            id="collection-assignments-{{ task_id }}"
             class="collection-assignments hidden text-sm"
-            hx-sse="swap:message"
-            hx-trigger="sse:message"
-            _="on sse:message 
-               set data to JSON.parse(event.data)
-               if data.status == 'completed' and data.collection_assignments
-                 set html to '<div class=\"bg-gray-800 rounded p-3 mt-2\"><h5 class=\"text-white font-medium mb-2\">📁 Document Assignments:</h5>'
-                 for file in Object.keys(data.collection_assignments)
-                   set collection to data.collection_assignments[file]
-                   set html to html + '<div class=\"text-xs text-gray-300 mb-1\"><span class=\"text-blue-400\">' + file + '</span> → <span class=\"text-green-400\">' + collection + '</span></div>'
-                 end
-                 set html to html + '</div>'
-                 put html into me
-                 remove .hidden from me
-               end"
         >
         </div>
         
         <!-- Error Messages -->
         <div 
+            id="error-messages-{{ task_id }}"
             class="error-messages text-sm"
-            hx-sse="swap:message"
-            hx-trigger="sse:message"
-            _="on sse:message 
-               set data to JSON.parse(event.data)
-               if data.errors and data.errors.length > 0
-                 set errorHtml to '<div class=\"bg-red-900 bg-opacity-50 rounded p-3 mt-2\"><h5 class=\"text-red-300 font-medium mb-2\">⚠️ Errors:</h5>'
-                 for error in data.errors
-                   set errorHtml to errorHtml + '<div class=\"text-red-400 text-xs mb-1\">• ' + error + '</div>'
-                 end
-                 set errorHtml to errorHtml + '</div>'
-                 put errorHtml into me
-               end"
         >
         </div>
     </div>
 </div>
 
-<script src="https://unpkg.com/hyperscript.org@0.9.12"></script> 
+<script>
+(function() {
+    const taskId = '{{ task_id }}';
+    let eventSource = null;
+    
+    // Close any existing connection first
+    if (window.currentUploadEventSource) {
+        window.currentUploadEventSource.close();
+    }
+    
+    // Create new SSE connection
+    eventSource = new EventSource('/progress/' + taskId);
+    window.currentUploadEventSource = eventSource;
+    
+    // Get DOM elements
+    const progressBar = document.getElementById('progress-bar-' + taskId);
+    const progressMessage = document.getElementById('progress-message-' + taskId);
+    const progressPercent = document.getElementById('progress-percent-' + taskId);
+    const statusMessage = document.getElementById('status-message-' + taskId);
+    const collectionAssignments = document.getElementById('collection-assignments-' + taskId);
+    const errorMessages = document.getElementById('error-messages-' + taskId);
+    
+    eventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            
+            // Update progress bar
+            if (progressBar) {
+                progressBar.style.width = data.progress + '%';
+                
+                // Change color based on status
+                if (data.progress >= 100) {
+                    if (data.status === 'error') {
+                        progressBar.className = 'bg-red-600 h-2 rounded-full progress-bar transition-all duration-300';
+                    } else {
+                        progressBar.className = 'bg-green-600 h-2 rounded-full progress-bar transition-all duration-300';
+                    }
+                }
+            }
+            
+            // Update messages
+            if (progressMessage) {
+                progressMessage.textContent = data.message;
+            }
+            if (progressPercent) {
+                progressPercent.textContent = data.progress + '%';
+            }
+            
+            // Update status message with emoji
+            if (statusMessage) {
+                let emoji = '⏳';
+                let className = 'text-sm text-gray-300';
+                
+                if (data.status === 'completed') {
+                    emoji = '✅';
+                    className = 'text-sm text-green-400';
+                } else if (data.status === 'error') {
+                    emoji = '❌';
+                    className = 'text-sm text-red-400';
+                }
+                
+                statusMessage.textContent = emoji + ' ' + data.message;
+                statusMessage.className = className;
+            }
+            
+            // Show collection assignments on completion
+            if (data.status === 'completed' && data.collection_assignments && collectionAssignments) {
+                let html = '<div class="bg-gray-800 rounded p-3 mt-2"><h5 class="text-white font-medium mb-2">📁 Document Assignments:</h5>';
+                
+                for (const [file, collection] of Object.entries(data.collection_assignments)) {
+                    html += `<div class="text-xs text-gray-300 mb-1">
+                        <span class="text-blue-400">${file}</span> → 
+                        <span class="text-green-400">${collection}</span>
+                    </div>`;
+                }
+                
+                html += '</div>';
+                collectionAssignments.innerHTML = html;
+                collectionAssignments.classList.remove('hidden');
+            }
+            
+            // Show errors if any
+            if (data.errors && data.errors.length > 0 && errorMessages) {
+                let errorHtml = '<div class="bg-red-900 bg-opacity-50 rounded p-3 mt-2"><h5 class="text-red-300 font-medium mb-2">⚠️ Errors:</h5>';
+                
+                data.errors.forEach(error => {
+                    errorHtml += `<div class="text-red-400 text-xs mb-1">• ${error}</div>`;
+                });
+                
+                errorHtml += '</div>';
+                errorMessages.innerHTML = errorHtml;
+            }
+            
+            // Close connection when complete
+            if (data.status === 'completed' || data.status === 'error') {
+                eventSource.close();
+                window.currentUploadEventSource = null;
+                
+                // Refresh collection stats after successful upload
+                if (data.status === 'completed') {
+                    setTimeout(() => {
+                        const refreshButton = document.querySelector('[hx-get="/collection-stats"]');
+                        if (refreshButton) {
+                            refreshButton.click();
+                        }
+                    }, 1000);
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error parsing SSE data:', error);
+        }
+    };
+    
+    eventSource.onerror = function(event) {
+        console.error('SSE connection error:', event);
+        if (statusMessage) {
+            statusMessage.textContent = '❌ Connection error';
+            statusMessage.className = 'text-sm text-red-400';
+        }
+        eventSource.close();
+        window.currentUploadEventSource = null;
+    };
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (eventSource) {
+            eventSource.close();
+        }
+    });
+})();
+</script> 
