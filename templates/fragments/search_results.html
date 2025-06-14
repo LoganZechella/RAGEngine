@@ -39,13 +39,13 @@
     {% endif %}
 
     <!-- Synthesis Results -->
-    {% if results.synthesis %}
+    {% if results.synthesized_knowledge %}
     <div class="bg-gradient-to-r from-purple-900 to-purple-800 rounded-lg p-6">
         <h3 class="text-xl font-semibold text-white mb-4 flex items-center">
             🧠 Knowledge Synthesis
-            {% if results.synthesis.overall_confidence %}
+            {% if results.synthesized_knowledge.overall_confidence %}
                 <span class="ml-2 text-sm text-gray-300">
-                    ({{ (results.synthesis.overall_confidence * 100)|round }}% confidence)
+                    ({{ (results.synthesized_knowledge.overall_confidence * 100)|round }}% confidence)
                 </span>
             {% endif %}
         </h3>
@@ -53,15 +53,15 @@
         <!-- Summary -->
         <div class="bg-black bg-opacity-20 rounded-lg p-4 mb-4">
             <h4 class="font-semibold text-purple-200 mb-2">Executive Summary</h4>
-            <p class="text-gray-200">{{ results.synthesis.summary }}</p>
+            <p class="text-gray-200">{{ results.synthesized_knowledge.summary }}</p>
         </div>
 
         <!-- Key Concepts -->
-        {% if results.synthesis.key_concepts %}
+        {% if results.synthesized_knowledge.key_concepts %}
         <div class="mb-4">
-            <h4 class="font-semibold text-purple-200 mb-3">🔑 Key Concepts ({{ results.synthesis.key_concepts|length }})</h4>
+            <h4 class="font-semibold text-purple-200 mb-3">🔑 Key Concepts ({{ results.synthesized_knowledge.key_concepts|length }})</h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {% for concept in results.synthesis.key_concepts[:6] %}
+                {% for concept in results.synthesized_knowledge.key_concepts[:6] %}
                 <div class="bg-black bg-opacity-20 rounded-lg p-3">
                     <div class="flex items-start justify-between mb-2">
                         <h5 class="font-medium text-white">{{ concept.concept }}</h5>
@@ -98,11 +98,11 @@
         {% endif %}
 
         <!-- Synthesis Insights -->
-        {% if results.synthesis.synthesis_insights %}
+        {% if results.synthesized_knowledge.synthesis_insights %}
         <div class="mb-4">
-            <h4 class="font-semibold text-purple-200 mb-3">💡 Novel Insights ({{ results.synthesis.synthesis_insights|length }})</h4>
+            <h4 class="font-semibold text-purple-200 mb-3">💡 Novel Insights ({{ results.synthesized_knowledge.synthesis_insights|length }})</h4>
             <div class="space-y-3">
-                {% for insight in results.synthesis.synthesis_insights[:3] %}
+                {% for insight in results.synthesized_knowledge.synthesis_insights[:3] %}
                 <div class="bg-black bg-opacity-20 rounded-lg p-3">
                     <div class="flex items-start justify-between mb-2">
                         <p class="text-white font-medium">{{ insight.insight }}</p>
@@ -132,11 +132,11 @@
         {% endif %}
 
         <!-- Research Gaps -->
-        {% if results.synthesis.research_gaps %}
+        {% if results.synthesized_knowledge.research_gaps %}
         <div class="mb-4">
-            <h4 class="font-semibold text-purple-200 mb-3">🔍 Research Gaps ({{ results.synthesis.research_gaps|length }})</h4>
+            <h4 class="font-semibold text-purple-200 mb-3">🔍 Research Gaps ({{ results.synthesized_knowledge.research_gaps|length }})</h4>
             <div class="space-y-2">
-                {% for gap in results.synthesis.research_gaps[:3] %}
+                {% for gap in results.synthesized_knowledge.research_gaps[:3] %}
                 <div class="bg-black bg-opacity-20 rounded-lg p-3">
                     <div class="flex items-start justify-between">
                         <p class="text-white text-sm">{{ gap.gap_description }}</p>
@@ -161,11 +161,11 @@
         {% endif %}
 
         <!-- Topics -->
-        {% if results.synthesis.topics %}
+        {% if results.synthesized_knowledge.topics %}
         <div>
             <h4 class="font-semibold text-purple-200 mb-2">📚 Key Topics</h4>
             <div class="flex flex-wrap gap-2">
-                {% for topic in results.synthesis.topics[:8] %}
+                {% for topic in results.synthesized_knowledge.topics[:8] %}
                 <span class="px-3 py-1 bg-purple-700 text-purple-100 rounded-full text-sm">
                     {{ topic }}
                 </span>

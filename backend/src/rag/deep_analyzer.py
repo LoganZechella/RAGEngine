@@ -24,7 +24,7 @@ class DeepAnalyzer:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-pro-preview-05-06",
+        model_name: str = "gemini-2.5-pro-preview-06-05",
         temperature: float = 0.2,
         max_output_tokens: int = 20000,
         verbose: bool = False

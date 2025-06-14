@@ -10,7 +10,7 @@ import logging
 
 from ..models.data_models import (
     EmbeddedChunk, RetrievedContext, SynthesizedKnowledge, 
-    DocumentCollection, CollectionMetadata, ParsedDocument
+    DocumentCollection, CollectionMetadata, ParsedDocument, TextChunk
 )
 from ..ingestion.collection_manager import CollectionManager
 from ..ingestion.multi_collection_vector_db_manager import MultiCollectionVectorDBManager
@@ -95,7 +95,16 @@ class MultiCollectionKnowledgeBaseAPI:
                 target_collections = [DocumentCollection.CURRENT]
             
             # Generate query embedding
-            query_embedding = self.embedding_generator.generate_embedding(query)
+            query_chunk = TextChunk(
+                chunk_id="query",
+                document_id="query",
+                text=query,
+                metadata={}
+            )
+            embedded_query = self.embedding_generator.generate_embeddings([query_chunk])
+            if not embedded_query or embedded_query[0].embedding_vector is None:
+                raise ValueError("Failed to generate query embedding")
+            query_embedding = embedded_query[0].embedding_vector
             
             # Search across collections
             collection_results = self.vector_db.search_collections(
@@ -127,7 +136,7 @@ class MultiCollectionKnowledgeBaseAPI:
             synthesis = None
             if synthesize and top_contexts and hasattr(self.rag, 'deep_analyzer'):
                 try:
-                    synthesis = self.rag.deep_analyzer.synthesize_knowledge(query, top_contexts)
+                    synthesis = self.rag.deep_analyzer.synthesize_knowledge({"query": query}, top_contexts)
                 except Exception as e:
                     logger.warning(f"Knowledge synthesis failed: {e}")
             
@@ -344,7 +353,16 @@ class MultiCollectionKnowledgeBaseAPI:
     ) -> Dict[str, Any]:
         """Perform dense vector search only."""
         try:
-            query_embedding = self.embedding_generator.generate_embedding(query)
+            query_chunk = TextChunk(
+                chunk_id="query",
+                document_id="query",
+                text=query,
+                metadata={}
+            )
+            embedded_query = self.embedding_generator.generate_embeddings([query_chunk])
+            if not embedded_query or embedded_query[0].embedding_vector is None:
+                raise ValueError("Failed to generate query embedding")
+            query_embedding = embedded_query[0].embedding_vector
             contexts = self.vector_db.dense_vector_search(
                 query_embedding=query_embedding,
                 top_k=top_k,
