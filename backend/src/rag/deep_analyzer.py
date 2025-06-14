@@ -7,7 +7,9 @@ Optimized for the enhanced SynthesizedKnowledge data model.
 from typing import List, Dict, Any, Optional
 from loguru import logger
 import os
-import google.generativeai as genai
+import json
+import google.genai as genai
+from google.genai import types
 from datetime import datetime
 
 from backend.src.models.data_models import (
@@ -39,20 +41,21 @@ class DeepAnalyzer:
         self.max_output_tokens = max_output_tokens
         self.verbose = verbose
         
-        # Initialize Google Gemini API
-        genai.configure(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
         
-        generation_config = {
-            "temperature": self.temperature,
-            "max_output_tokens": self.max_output_tokens,
-            "response_mime_type": "application/json"
-        }
+        system_instruction = """
+Adopt the persona of a PhD-level researcher and critical analyst. 
+Your task is to perform a comprehensive analysis of the provided source material.
+"""
         
-        self.model = genai.GenerativeModel(
-            model_name=self.model_name,
-            generation_config=generation_config
+        self.config = types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=self.max_output_tokens,
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(include_thoughts=True),
+            system_instruction=system_instruction
         )
-    
+
     def synthesize_knowledge(
         self,
         query_details: Dict[str, Any],
@@ -72,22 +75,32 @@ class DeepAnalyzer:
         
         logger.info(f"Synthesizing knowledge from {len(contexts)} contexts")
         
-        # Extract text from contexts
         context_texts = [f"Context {i+1}:\n{ctx.text}\n" for i, ctx in enumerate(contexts)]
         consolidated_context = "\n\n".join(context_texts)
         
-        # Create enhanced prompt
         prompt = self._create_enhanced_synthesis_prompt(query_details, consolidated_context)
         
         try:
-            # Call Gemini API
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=self.config,
+            )
             
+            thoughts = []
+            final_response_text = ""
+
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'text'):
+                    final_response_text = part.text
+                if hasattr(part, 'thought'):
+                    thoughts.append(part.thought)
+
             if self.verbose:
-                logger.debug(f"Gemini response: {response.text}")
-            
-            # Parse the response into enhanced SynthesizedKnowledge object
-            synthesized = self._parse_enhanced_response(response.text, contexts)
+                logger.debug(f"Gemini thoughts: {thoughts}")
+                logger.debug(f"Gemini final response: {final_response_text}")
+
+            synthesized = self._parse_enhanced_response(final_response_text, contexts, thoughts)
             
             if synthesized:
                 logger.info(f"Successfully synthesized knowledge with {len(synthesized.key_concepts)} concepts, {len(synthesized.synthesis_insights)} insights")
@@ -111,9 +124,9 @@ class DeepAnalyzer:
         query = query_details.get("query", "")
         
         prompt = f"""
-I. Expert Analysis Directive
+I. Analysis Directive
 
-Adopt the persona of a PhD-level researcher and critical analyst. Perform comprehensive analysis of the provided information related to: {query}
+Perform comprehensive analysis of the provided information related to: {query}
 {f"Domain: {domain}" if domain else ""}
 
 II. Source Material
@@ -180,7 +193,16 @@ IV. Analysis Requirements
 - Assign realistic confidence scores based on evidence strength
 - Ensure all claims are supported by the provided contexts
 
-V. Quality Standards
+V. Reasoning Process
+
+- Before generating the final JSON, use your thinking process to outline your analysis step-by-step.
+- First, identify the core questions in the query.
+- Second, extract relevant facts and evidence from each source context.
+- Third, critically evaluate the evidence, noting quality and potential conflicts.
+- Fourth, formulate the key concepts, synthesis insights, and research gaps based on your evaluation.
+- Finally, construct the complete JSON output based on your reasoning.
+
+VI. Quality Standards
 
 - Be comprehensive yet focused on answering the specific query
 - Demonstrate sophisticated critical thinking and analysis
@@ -193,12 +215,12 @@ V. Quality Standards
     def _parse_enhanced_response(
         self, 
         response_text: str, 
-        contexts: List[RetrievedContext]
+        contexts: List[RetrievedContext],
+        thoughts: List[str]
     ) -> Optional[SynthesizedKnowledge]:
         """Parse Gemini response into enhanced SynthesizedKnowledge object."""
         
         try:
-            import json
             response_json = json.loads(response_text)
             
             # Parse key concepts with enhanced structure
@@ -269,7 +291,8 @@ V. Quality Standards
                 analysis_timestamp=datetime.now(),
                 analysis_model=self.model_name,
                 query_complexity=response_json.get("query_complexity"),
-                synthesis_quality_indicators=response_json.get("synthesis_quality_indicators", {})
+                synthesis_quality_indicators=response_json.get("synthesis_quality_indicators", {}),
+                analysis_thoughts=thoughts
             )
             
         except json.JSONDecodeError:
@@ -279,7 +302,8 @@ V. Quality Standards
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 analysis_depth=AnalysisDepth.FALLBACK_TEXT,
                 num_source_contexts=len(contexts),
-                analysis_model=self.model_name
+                analysis_model=self.model_name,
+                analysis_thoughts=thoughts
             )
         except Exception as e:
             logger.error(f"Error parsing enhanced response: {str(e)}")
@@ -288,7 +312,8 @@ V. Quality Standards
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 analysis_depth=AnalysisDepth.ERROR,
                 num_source_contexts=len(contexts),
-                analysis_model=self.model_name
+                analysis_model=self.model_name,
+                analysis_thoughts=thoughts
             )
     
     def get_analyzer_info(self) -> Dict[str, Any]:
@@ -297,7 +322,7 @@ V. Quality Standards
             "model": self.model_name,
             "max_tokens": self.max_output_tokens,
             "temperature": self.temperature,
-            "api_available": self.model is not None,
+            "api_available": self.client is not None,
             "analysis_capabilities": [
                 "phd_level_analysis",
                 "synthesis_insights", 

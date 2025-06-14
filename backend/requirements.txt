@@ -12,8 +12,8 @@ Pillow  # Required for image processing
 qdrant-client  # Qdrant vector database client
 
 # Embeddings & LLM API access
-openai  # For o4-mini and text-embedding-3-large
-google-generativeai  # For Gemini 2.5 Pro
+openai  # For o4-mini and text-embedding-3-small
+google-genai>=1.19.0  # For Gemini 2.5 Pro
 
 # Text processing
 nltk  # For text tokenization and processing

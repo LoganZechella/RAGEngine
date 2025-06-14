@@ -116,6 +116,8 @@ class RetrievedContext(BaseModel):
     rerank_score: Optional[float] = None  # Score after reranking, if performed
     collection: Optional[DocumentCollection] = None  # NEW FIELD
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    synthesis_quality_indicators: Optional[Dict[str, Any]] = Field(None, description="Indicators for the quality of the synthesis process.")
+    analysis_thoughts: Optional[List[str]] = Field(None, description="The chain of thought and reasoning process from the analysis model.")
 
 
 class KeyConcept(BaseModel):
@@ -213,3 +215,6 @@ class SynthesizedKnowledge(BaseModel):
             self.methodological_observations or 
             self.theoretical_implications
         )
+
+class SearchResult(BaseModel):
+    query: str
