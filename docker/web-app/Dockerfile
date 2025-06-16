@@ -16,6 +16,19 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download ML models to avoid runtime download timeouts
+# Set environment variables for model caching to match where sentence-transformers looks
+ENV SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence_transformers
+ENV TRANSFORMERS_CACHE=/root/.cache/transformers
+ENV HF_HOME=/root/.cache/huggingface
+
+# Create cache directories
+RUN mkdir -p /root/.cache/sentence_transformers /root/.cache/transformers /root/.cache/huggingface
+
+# Copy model preloading script and run it to cache models during build
+COPY docker/web-app/simple_preload.py /tmp/simple_preload.py
+RUN python /tmp/simple_preload.py && rm /tmp/simple_preload.py
+
 # Copy application code
 COPY backend/ ./backend/
 COPY templates/ ./templates/

@@ -2,15 +2,24 @@
 Enhanced Deep Analyzer for RAG Engine.
 Performs PhD-level comprehensive analysis with improved output structure and readability.
 Optimized for the enhanced SynthesizedKnowledge data model.
+Supports both Gemini and OpenAI o3 models with configuration-based switching.
 """
 
 from typing import List, Dict, Any, Optional
 from loguru import logger
 import os
 import json
-import google.genai as genai
+from google import genai
 from google.genai import types
 from datetime import datetime
+
+# Conditional OpenAI import - lazy loading to avoid dependency issues
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    logger.warning("OpenAI library not available. Only Gemini provider will be supported.")
 
 from backend.src.models.data_models import (
     RetrievedContext, SynthesizedKnowledge, KeyConcept, SynthesisInsight, 
@@ -20,27 +29,47 @@ from backend.src.models.data_models import (
 
 class DeepAnalyzer:
     """
-    Enhanced Deep Analyzer for PhD-level comprehensive analysis with improved structure.
+    Enhanced Deep Analyzer for PhD-level comprehensive analysis with dual provider support.
+    Supports both Gemini 2.5-pro and OpenAI o3 models with configuration-based switching.
     """
     
     def __init__(
         self,
         api_key: Optional[str] = None,
         model_name: str = "gemini-2.5-pro-preview-06-05",
+        model_provider: str = "gemini",  # FIXED: Back to "gemini" for backwards compatibility
+        openai_api_key: Optional[str] = None,  # NEW
+        openai_model: str = "o3-2025-04-16",  # NEW
+        reasoning_effort: str = "medium",  # NEW: "low", "medium", "high"
         temperature: float = 0.2,
         max_output_tokens: int = 20000,
         verbose: bool = False
     ):
-        """Initialize the Enhanced DeepAnalyzer."""
+        """Initialize the Enhanced DeepAnalyzer with dual provider support."""
+        
+        # Environment variable override for provider selection
+        self.model_provider = os.getenv("MODEL_PROVIDER", model_provider).lower()
+        
+        # Common configuration
+        self.temperature = temperature
+        self.max_output_tokens = max_output_tokens
+        self.verbose = verbose
+        
+        # Initialize based on provider
+        if self.model_provider == "gemini":
+            self._init_gemini(api_key, model_name)
+        elif self.model_provider == "openai":
+            self._init_openai(openai_api_key, openai_model, reasoning_effort)
+        else:
+            raise ValueError(f"Unsupported model provider: {self.model_provider}. Supported: 'gemini', 'openai'")
+    
+    def _init_gemini(self, api_key: Optional[str], model_name: str):
+        """Initialize Gemini provider configuration."""
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Google API key is required. Set it via parameter or GOOGLE_API_KEY environment variable.")
         
         self.model_name = model_name
-        self.temperature = temperature
-        self.max_output_tokens = max_output_tokens
-        self.verbose = verbose
-        
         self.client = genai.Client(api_key=self.api_key)
         
         system_instruction = """
@@ -55,6 +84,37 @@ Your task is to perform a comprehensive analysis of the provided source material
             thinking_config=types.ThinkingConfig(include_thoughts=True),
             system_instruction=system_instruction
         )
+    
+    def _init_openai(self, openai_api_key: Optional[str], openai_model: str, reasoning_effort: str):
+        """Initialize OpenAI provider configuration."""
+        if not OPENAI_AVAILABLE:
+            raise ValueError("OpenAI library not available. Install with: pip install openai")
+        
+        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not self.openai_api_key:
+            raise ValueError("OpenAI API key is required. Set it via parameter or OPENAI_API_KEY environment variable.")
+        
+        self.openai_model = os.getenv("OPENAI_MODEL", openai_model)
+        self.reasoning_effort = os.getenv("REASONING_EFFORT", reasoning_effort)
+        
+        # Validate reasoning effort
+        if self.reasoning_effort not in ["low", "medium", "high"]:
+            logger.warning(f"Invalid reasoning effort '{self.reasoning_effort}', defaulting to 'medium'")
+            self.reasoning_effort = "medium"
+        
+        # OpenAI o3 requires longer timeouts due to reasoning process
+        # Set timeout to 3 minutes (180 seconds) to accommodate complex reasoning
+        self.openai_client = OpenAI(
+            api_key=self.openai_api_key,
+            timeout=180.0  # 3 minutes timeout for o3 reasoning
+        )
+        
+        # System instruction for OpenAI
+        self.openai_system_instruction = """
+Adopt the persona of a PhD-level researcher and critical analyst. 
+Your task is to perform a comprehensive analysis of the provided source material.
+Use your advanced reasoning capabilities to provide deep, structured insights.
+"""
 
     def synthesize_knowledge(
         self,
@@ -63,6 +123,7 @@ Your task is to perform a comprehensive analysis of the provided source material
     ) -> Optional[SynthesizedKnowledge]:
         """
         Perform enhanced PhD-level knowledge synthesis with structured output.
+        Routes to appropriate provider based on configuration.
         """
         if not contexts:
             logger.warning("No contexts provided for knowledge synthesis")
@@ -73,8 +134,24 @@ Your task is to perform a comprehensive analysis of the provided source material
                 num_source_contexts=0
             )
         
-        logger.info(f"Synthesizing knowledge from {len(contexts)} contexts")
+        logger.info(f"Synthesizing knowledge from {len(contexts)} contexts using {self.model_provider} provider")
         
+        # Route to appropriate provider
+        if self.model_provider == "gemini":
+            return self._synthesize_with_gemini(query_details, contexts)
+        elif self.model_provider == "openai":
+            return self._synthesize_with_openai(query_details, contexts)
+        else:
+            raise ValueError(f"Unsupported model provider: {self.model_provider}")
+    
+    def _synthesize_with_gemini(
+        self,
+        query_details: Dict[str, Any],
+        contexts: List[RetrievedContext]
+    ) -> Optional[SynthesizedKnowledge]:
+        """
+        Gemini-based knowledge synthesis (existing implementation).
+        """
         context_texts = [f"Context {i+1}:\n{ctx.text}\n" for i, ctx in enumerate(contexts)]
         consolidated_context = "\n\n".join(context_texts)
         
@@ -103,17 +180,84 @@ Your task is to perform a comprehensive analysis of the provided source material
             synthesized = self._parse_enhanced_response(final_response_text, contexts, thoughts)
             
             if synthesized:
+                synthesized.analysis_model = self.model_name
                 logger.info(f"Successfully synthesized knowledge with {len(synthesized.key_concepts)} concepts, {len(synthesized.synthesis_insights)} insights")
             
             return synthesized
             
         except Exception as e:
-            logger.error(f"Error in knowledge synthesis: {str(e)}")
+            logger.error(f"Error in Gemini knowledge synthesis: {str(e)}")
             return SynthesizedKnowledge(
-                summary=f"Error during synthesis: {str(e)}",
+                summary=f"Error during Gemini synthesis: {str(e)}",
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 analysis_depth=AnalysisDepth.ERROR,
-                num_source_contexts=len(contexts)
+                num_source_contexts=len(contexts),
+                analysis_model=self.model_name
+            )
+    
+    def _synthesize_with_openai(
+        self,
+        query_details: Dict[str, Any],
+        contexts: List[RetrievedContext]
+    ) -> Optional[SynthesizedKnowledge]:
+        """
+        OpenAI o3 implementation with equivalent functionality to Gemini.
+        """
+        context_texts = [f"Context {i+1}:\n{ctx.text}\n" for i, ctx in enumerate(contexts)]
+        consolidated_context = "\n\n".join(context_texts)
+        
+        prompt = self._create_enhanced_synthesis_prompt(query_details, consolidated_context)
+        
+        try:
+            logger.info(f"Starting OpenAI o3 synthesis with reasoning_effort='{self.reasoning_effort}' (this may take 30-120 seconds)")
+            
+            response = self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {
+                        "role": "developer", 
+                        "content": self.openai_system_instruction
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_completion_tokens=self.max_output_tokens,
+                reasoning_effort=self.reasoning_effort,
+                temperature=self.temperature,
+            )
+            
+            logger.info("OpenAI o3 synthesis completed successfully")
+            
+            # Extract response content and reasoning
+            final_response_text = response.choices[0].message.content
+            reasoning_tokens = 0
+            if response.usage and response.usage.completion_tokens_details:
+                reasoning_tokens = response.usage.completion_tokens_details.reasoning_tokens or 0
+            
+            # Convert reasoning tokens to thoughts format for compatibility
+            thoughts = [f"Reasoning tokens used: {reasoning_tokens}"] if reasoning_tokens > 0 else []
+            
+            if self.verbose:
+                logger.debug(f"OpenAI reasoning tokens: {reasoning_tokens}")
+                logger.debug(f"OpenAI response: {final_response_text}")
+            
+            # Use same parsing logic as Gemini
+            synthesized = self._parse_enhanced_response(final_response_text, contexts, thoughts)
+            
+            if synthesized:
+                # Update model name for tracking
+                synthesized.analysis_model = self.openai_model
+                logger.info(f"Successfully synthesized knowledge with OpenAI o3: {len(synthesized.key_concepts)} concepts, {len(synthesized.synthesis_insights)} insights")
+            
+            return synthesized
+            
+        except Exception as e:
+            logger.error(f"Error in OpenAI knowledge synthesis: {str(e)}")
+            return SynthesizedKnowledge(
+                summary=f"Error during OpenAI synthesis: {str(e)}",
+                source_chunk_ids=[ctx.chunk_id for ctx in contexts],
+                analysis_depth=AnalysisDepth.ERROR,
+                num_source_contexts=len(contexts),
+                analysis_model=self.openai_model
             )
     
     def _create_enhanced_synthesis_prompt(self, query_details: Dict[str, Any], consolidated_context: str) -> str:
@@ -218,7 +362,7 @@ VI. Quality Standards
         contexts: List[RetrievedContext],
         thoughts: List[str]
     ) -> Optional[SynthesizedKnowledge]:
-        """Parse Gemini response into enhanced SynthesizedKnowledge object."""
+        """Parse response into enhanced SynthesizedKnowledge object."""
         
         try:
             response_json = json.loads(response_text)
@@ -289,40 +433,41 @@ VI. Quality Standards
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 num_source_contexts=len(contexts),
                 analysis_timestamp=datetime.now(),
-                analysis_model=self.model_name,
+                analysis_model=getattr(self, 'model_name', None) or getattr(self, 'openai_model', 'unknown'),
                 query_complexity=response_json.get("query_complexity"),
                 synthesis_quality_indicators=response_json.get("synthesis_quality_indicators", {}),
                 analysis_thoughts=thoughts
             )
             
         except json.JSONDecodeError:
-            logger.warning("Gemini response is not valid JSON. Creating fallback synthesis.")
+            logger.warning("Response is not valid JSON. Creating fallback synthesis.")
+            model_name = getattr(self, 'model_name', None) or getattr(self, 'openai_model', 'unknown')
             return SynthesizedKnowledge(
                 summary=response_text[:1000] if len(response_text) > 1000 else response_text,
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 analysis_depth=AnalysisDepth.FALLBACK_TEXT,
                 num_source_contexts=len(contexts),
-                analysis_model=self.model_name,
+                analysis_model=model_name,
                 analysis_thoughts=thoughts
             )
         except Exception as e:
             logger.error(f"Error parsing enhanced response: {str(e)}")
+            model_name = getattr(self, 'model_name', None) or getattr(self, 'openai_model', 'unknown')
             return SynthesizedKnowledge(
                 summary=f"Error parsing synthesis response: {str(e)}",
                 source_chunk_ids=[ctx.chunk_id for ctx in contexts],
                 analysis_depth=AnalysisDepth.ERROR,
                 num_source_contexts=len(contexts),
-                analysis_model=self.model_name,
+                analysis_model=model_name,
                 analysis_thoughts=thoughts
             )
     
     def get_analyzer_info(self) -> Dict[str, Any]:
-        """Get information about the enhanced analyzer configuration."""
-        return {
-            "model": self.model_name,
+        """Get information about the enhanced analyzer configuration with dual provider support."""
+        base_info = {
+            "provider": self.model_provider,
             "max_tokens": self.max_output_tokens,
             "temperature": self.temperature,
-            "api_available": self.client is not None,
             "analysis_capabilities": [
                 "phd_level_analysis",
                 "synthesis_insights", 
@@ -331,3 +476,28 @@ VI. Quality Standards
                 "confidence_scoring"
             ]
         }
+        
+        if self.model_provider == "gemini":
+            base_info.update({
+                "model": self.model_name,
+                "api_available": self.client is not None,
+                "thinking_enabled": True,
+                "provider_specific": {
+                    "google_api_key_set": bool(self.api_key),
+                    "thinking_config": "enabled"
+                }
+            })
+        elif self.model_provider == "openai":
+            base_info.update({
+                "model": self.openai_model,
+                "api_available": self.openai_client is not None,
+                "reasoning_effort": self.reasoning_effort,
+                "reasoning_enabled": True,
+                "provider_specific": {
+                    "openai_api_key_set": bool(self.openai_api_key),
+                    "reasoning_effort_level": self.reasoning_effort,
+                    "openai_library_available": OPENAI_AVAILABLE
+                }
+            })
+        
+        return base_info

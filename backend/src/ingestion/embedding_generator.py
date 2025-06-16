@@ -29,7 +29,8 @@ class EmbeddingGenerator:
         api_key: Optional[str] = None,
         model_name: str = "text-embedding-3-small",
         dimensions: int = 1536,
-        max_retries: int = 5
+        max_retries: int = 5,
+        timeout: int = 120  # NEW: Increased timeout
     ):
         """
         Initialize the EmbeddingGenerator.
@@ -39,12 +40,13 @@ class EmbeddingGenerator:
             model_name: Name of the embedding model
             dimensions: Dimensionality of embeddings (native 1536 for text-embedding-3-small)
             max_retries: Maximum number of retry attempts for API calls
+            timeout: API request timeout in seconds
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key is required. Set it via parameter or OPENAI_API_KEY environment variable.")
             
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = OpenAI(api_key=self.api_key, timeout=timeout)  # MODIFIED: Set timeout
         self.model_name = model_name
         self.dimensions = dimensions
         self.max_retries = max_retries
@@ -77,8 +79,14 @@ class EmbeddingGenerator:
             embeddings = [data.embedding for data in response.data]
             return embeddings
             
+        except APITimeoutError as e:
+            logger.error(f"OpenAI API timeout error after {self.client.timeout}s: {str(e)}")
+            raise
+        except APIError as e:
+            logger.error(f"OpenAI API error: Status {e.status_code}, Message: {e.message}")
+            raise
         except Exception as e:
-            logger.error(f"Error generating embeddings: {str(e)}")
+            logger.error(f"An unexpected error occurred while generating embeddings: {str(e)}")
             raise
     
     def generate_embeddings(self, text_chunks: List[TextChunk], batch_size: int = 100) -> List[EmbeddedChunk]:

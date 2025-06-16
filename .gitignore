@@ -28,4 +28,4 @@ documents/*
 secrets/*
 
 .env.docker.example
-
+backend/src/rag/deep_analyzer.py.backup

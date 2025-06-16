@@ -98,6 +98,7 @@ temp/
 documents/
 Context/
 static/uploads/
+backend/src/rag/deep_analyzer.py.backup
 
 # Secrets (these should be mounted as Docker secrets)
 secrets/
